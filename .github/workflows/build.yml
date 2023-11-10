@@ -93,6 +93,6 @@ jobs:
     - name: upload file7
       uses: actions/upload-artifact@v3
       with:
-        name: aarch64_pc_windows.exe
+        name: arm64_pc_windows.exe
         path: 
           Release/aarch64_pc_windows.exe
