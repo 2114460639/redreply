@@ -34,6 +34,7 @@ jobs:
         cross build --target i686-pc-windows-gnu --release
         cross build --target aarch64-unknown-linux-musl --release
         cross build --target i686-unknown-linux-musl --release
+        cross build --target aarch64-pc-windows-gnu --release
         
         
     - name: before_upload
@@ -60,20 +61,20 @@ jobs:
         name: redlang_linux_x86_64
         path: 
             Release/redlang_linux_x86_64
-            
-    - name: upload file3
-      uses: actions/upload-artifact@v3
-      with:
-        name: redlang_windows_i686.exe
-        path: 
-            Release/redlang_windows_i686.exe
 
-    - name: upload file4
+    - name: upload file3
       uses: actions/upload-artifact@v3
       with:
         name: redlang_linux_aarch64
         path: 
             Release/redlang_linux_aarch64
+            
+    - name: upload file4
+      uses: actions/upload-artifact@v3
+      with:
+        name: redlang_windows_i686.exe
+        path: 
+            Release/redlang_windows_i686.exe
 
     - name: upload file5
       uses: actions/upload-artifact@v3
