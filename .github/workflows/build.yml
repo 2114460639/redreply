@@ -172,13 +172,49 @@ jobs:
   sync-to-gitee:
     name: Sync to Gitee
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - build-linux-x86_64
+      - build-linux-i686
+      - build-linux-aarch64
+      - build-android-aarch64
+      - build-windows-x86_64
+      - build-windows-i686
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    - name: Mirror to Gitee
+    - name: Mirror code and tags to Gitee
       run: |
         git remote add gitee https://${{ secrets.GITEE_USERNAME }}:${{ secrets.GITEE_TOKEN }}@gitee.com/${{ secrets.GITEE_USERNAME }}/redreply.git
         git push -f gitee refs/heads/*:refs/heads/*
         git push -f gitee refs/tags/*:refs/tags/*
+    - name: Download all artifacts
+      uses: actions/download-artifact@v5
+      with:
+        path: artifacts
+    - name: Collect binary files
+      run: |
+        mkdir -p release_files
+        find artifacts -type f -exec cp {} release_files/ \;
+        ls -la release_files/
+    - name: Create Gitee Release and Upload Assets
+      uses: nICEnnnnnnnLee/action-gitee-release@master
+      with:
+        gitee_action: create_release
+        gitee_owner: ${{ secrets.GITEE_USERNAME }}
+        gitee_repo: redreply
+        gitee_token: ${{ secrets.GITEE_TOKEN }}
+        gitee_tag_name: ${{ github.ref_name }}
+        gitee_release_name: ${{ github.ref_name }}
+        gitee_release_body: "redlang ${{ github.ref_name }} - 脚本编辑器 UI 重构 & 拖拽交互重做"
+        gitee_target_commitish: master
+        gitee_upload_retry_times: 3
+        gitee_files: |
+          release_files/redlang_linux_x86_64
+          release_files/redlang_linux_i686
+          release_files/redlang_linux_aarch64
+          release_files/redlang_android_aarch64
+          release_files/redlang_windows_x86_64.exe
+          release_files/redlang_windows_i686.exe
