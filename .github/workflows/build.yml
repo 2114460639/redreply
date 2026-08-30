@@ -168,3 +168,17 @@ jobs:
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sync-to-gitee:
+    name: Sync to Gitee
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Mirror to Gitee
+      run: |
+        git remote add gitee https://${{ secrets.GITEE_USERNAME }}:${{ secrets.GITEE_TOKEN }}@gitee.com/${{ secrets.GITEE_USERNAME }}/redreply.git
+        git push -f gitee refs/heads/*:refs/heads/*
+        git push -f gitee refs/tags/*:refs/tags/*
