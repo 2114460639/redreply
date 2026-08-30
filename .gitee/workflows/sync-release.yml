@@ -1,0 +1,148 @@
+version: '1.0'
+name: sync-github-release
+displayName: 同步 GitHub Release 到 Gitee
+triggers:
+  push:
+    branches:
+      precise:
+        - master
+stages:
+  - stage:
+      name: sync
+      displayName: 同步 Release
+      steps:
+        - step: shell@latest
+          name: download-and-upload
+          displayName: 下载并上传
+          inputs:
+            script: |
+              set +e
+              # === 配置 ===
+              GH_OWNER="2114460639"
+              GH_REPO="redreply"
+              GITEE_OWNER="weixiaoshen"
+              GITEE_REPO="redreply"
+              TOKEN="${GITEE_TOKEN}"
+              BASE="https://gitee.com/api/v5"
+
+              # === 获取最新版本 tag ===
+              TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+              if [ -z "$TAG" ]; then
+                echo "未找到 v* 版本 tag，退出"
+                exit 0
+              fi
+              echo "=== 最新 tag: $TAG ==="
+
+              # === 等待 GitHub Release 就绪（最多等 15 分钟）===
+              echo "=== 等待 GitHub Release $TAG 就绪 ==="
+              GH_READY=0
+              for i in $(seq 1 30); do
+                CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                  --connect-timeout 10 --max-time 15 \
+                  "https://api.github.com/repos/$GH_OWNER/$GH_REPO/releases/tags/$TAG")
+                if [ "$CODE" = "200" ]; then
+                  echo "  GitHub Release 已就绪"
+                  GH_READY=1
+                  break
+                fi
+                echo "  [$i/30] HTTP $CODE，30 秒后重试..."
+                sleep 30
+              done
+              if [ "$GH_READY" = "0" ]; then
+                echo "  !! GitHub Release 15 分钟内未就绪，放弃"
+                exit 1
+              fi
+
+              # === 下载 GitHub Release 所有附件 ===
+              echo "=== 下载 GitHub Release 附件 ==="
+              mkdir -p release_files
+              ASSETS_JSON=$(curl -s --connect-timeout 10 --max-time 30 \
+                "https://api.github.com/repos/$GH_OWNER/$GH_REPO/releases/tags/$TAG")
+              ASSETS=$(printf '%s' "$ASSETS_JSON" | python3 -c "
+              import sys, json
+              data = json.loads(sys.stdin.read() or '{}')
+              for a in data.get('assets', []):
+                  print(a['name'] + '|' + a['browser_download_url'])
+              " 2>/dev/null)
+              if [ -z "$ASSETS" ]; then
+                echo "  !! 未找到任何附件，退出"
+                exit 1
+              fi
+              echo "$ASSETS" | while IFS='|' read -r NAME URL; do
+                echo "  下载 $NAME ..."
+                curl -L --connect-timeout 15 --max-time 120 \
+                  -o "release_files/$NAME" "$URL"
+                FSIZE=$(stat -c%s "release_files/$NAME" 2>/dev/null || echo 0)
+                FSIZE_MB=$(awk -v s="$FSIZE" 'BEGIN{printf "%.1f", s/1048576}')
+                echo "    完成 ${FSIZE_MB}MB"
+              done
+              echo "=== 下载完成 ==="
+              ls -lh release_files/
+
+              # === 查找或创建 Gitee Release ===
+              echo "=== 查找 Gitee Release $TAG ==="
+              EXIST=$(curl -s --connect-timeout 10 --max-time 30 \
+                "$BASE/repos/$GITEE_OWNER/$GITEE_REPO/releases/tags/$TAG?access_token=$TOKEN")
+              RELEASE_ID=$(printf '%s' "$EXIST" | python3 -c "
+              import sys, json
+              d = json.loads(sys.stdin.read() or '{}')
+              print(d.get('id', ''))
+              " 2>/dev/null)
+              if [ -n "$RELEASE_ID" ]; then
+                echo "  已有 Gitee Release id=$RELEASE_ID"
+              else
+                echo "  创建 Gitee Release ..."
+                CREATED=$(curl -s --connect-timeout 10 --max-time 30 \
+                  -X POST "$BASE/repos/$GITEE_OWNER/$GITEE_REPO/releases" \
+                  -d "access_token=$TOKEN" \
+                  --data-urlencode "tag_name=$TAG" \
+                  --data-urlencode "name=$TAG" \
+                  --data-urlencode "body=redlang $TAG - 同步自 GitHub Release" \
+                  -d "target_commitish=master&prerelease=false")
+                RELEASE_ID=$(printf '%s' "$CREATED" | python3 -c "
+                import sys, json
+                d = json.loads(sys.stdin.read() or '{}')
+                print(d.get('id', ''))
+                " 2>/dev/null)
+                if [ -z "$RELEASE_ID" ]; then
+                  echo "  !! 创建 Gitee Release 失败: $CREATED"
+                  exit 1
+                fi
+                echo "  Gitee Release id=$RELEASE_ID"
+              fi
+
+              # === 上传附件到 Gitee Release ===
+              echo "=== 上传附件到 Gitee Release ==="
+              UPLOAD_URL="$BASE/repos/$GITEE_OWNER/$GITEE_REPO/releases/$RELEASE_ID/attach_files"
+              OK=0
+              FAIL=0
+              cd release_files
+              for f in *; do
+                [ -f "$f" ] || continue
+                FSIZE=$(stat -c%s "$f" 2>/dev/null || echo 0)
+                FSIZE_MB=$(awk -v s="$FSIZE" 'BEGIN{printf "%.1f", s/1048576}')
+                DONE=0
+                for i in 1 2 3; do
+                  echo "  => [$i/3] $f (${FSIZE_MB}MB)"
+                  OUT=$(curl -s -w "\nHTTPCODE:%{http_code}" \
+                    --connect-timeout 10 \
+                    --max-time 180 \
+                    -X POST "$UPLOAD_URL" \
+                    -F "access_token=$TOKEN" \
+                    -F "file=@$f")
+                  OCODE=$(echo "$OUT" | tail -n1 | sed 's/^HTTPCODE://')
+                  if [ "$OCODE" = "200" ] || [ "$OCODE" = "201" ]; then
+                    echo "     OK"
+                    DONE=1
+                    OK=$((OK+1))
+                    break
+                  fi
+                  echo "     FAIL http=$OCODE"
+                  sleep 2
+                done
+                if [ "$DONE" = "0" ]; then
+                  FAIL=$((FAIL+1))
+                  echo "     !! $f 上传失败，跳过"
+                fi
+              done
+              echo "=== 完成: ok=$OK fail=$FAIL ==="
