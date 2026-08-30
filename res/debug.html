@@ -4,7 +4,7 @@
 <head>
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-   <title>孤零零の调试台</title>
+   <title>红色问答调试</title>
    <style>
     html,body{
         width: 100%;
@@ -20,6 +20,11 @@
     button,textarea,body,select,input{
         background-color: #C7EDCC;
         font-family: fusion-pixel-12px-monospaced-zh_hant, serif;
+    }
+    button:hover {
+        background-color: aqua;
+        color: red;
+        cursor: pointer;
     }
     * {
         box-sizing: border-box;
@@ -55,6 +60,78 @@
         font-size: 20px;
         cursor: pointer;
     }
+
+    /* --- 自定义双层编辑器核心样式（移植自 pkg_edit1） --- */
+    .custom-editor-wrapper {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border: 1px solid;
+        border-radius: 15px;
+        background-color: #c7edcc;
+        overflow: hidden;
+        font-family: fusion-pixel-12px-monospaced-zh_hant, serif;
+    }
+    .editor-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        border: 0;
+        padding: 10px;
+        font-family: fusion-pixel-12px-monospaced-zh_hant, serif;
+        font-size: 14px;
+        line-height: 1.5;
+        letter-spacing: 0;
+        font-weight: normal;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow-y: auto;
+        overflow-x: hidden;
+        outline: none;
+        resize: none;
+        tab-size: 4;
+        box-sizing: border-box;
+    }
+    .highlight-layer {
+        z-index: 1;
+        background-color: transparent;
+        color: #000;
+        pointer-events: none;
+    }
+    .input-layer {
+        z-index: 2;
+        color: transparent;
+        background-color: transparent;
+        caret-color: #000;
+    }
+    .input-layer::selection {
+        background: rgba(0, 120, 215, 0.3);
+        color: transparent;
+    }
+    .input-layer::placeholder {
+        color: #999;
+    }
+    .lvl-1 { color: #000000; }
+    .lvl-2 { color: #FF0000; }
+    .lvl-3 { color: #0000FF; }
+    .lvl-4 { color: #008000; }
+    .error-bracket {
+        color: #ff0000;
+        text-decoration: wavy underline;
+    }
+    .active-pair {
+        background-color: rgba(0, 0, 0, 0.1);
+        border-radius: 3px;
+        box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
+    }
+    .comment-text {
+        color: #008000 !important;
+        font-style: italic;
+    }
+
     /* PC端布局 */
     @media (min-width: 769px) {
         .input-group-pc {
@@ -96,6 +173,10 @@
         }
         .image-button {
             display: none;
+        }
+        /* PC端隐藏全屏图片预览（移动端专属功能） */
+        .fullscreen-image {
+            display: none !important;
         }
     }
     /* 移动端布局 */
@@ -153,7 +234,7 @@
             flex-shrink: 0;
             max-width: 97% !important;
         }
-        .ql-editor {
+        .editor-layer {
             font-size: 14px !important;
         }
         button {
@@ -165,10 +246,8 @@
         }
     }
    </style>
-   <script src="axios.js"></script>
+   <script src="fetch-utils.js"></script>
    <script src="vue.js"></script>
-   <script src="vue-quill.js"></script>
-   <link rel="stylesheet" href="vue-quill.snow.prod.css">
 </head>
 
 <body>
@@ -236,47 +315,358 @@
             </div>
         </div>
         
-        <div style="height: 70%;border-radius:15px; flex-grow: 1;display: flex;flex-direction: column;flex-grow: 1;max-width: 100%;overflow-x: hidden;">
-            <quill-editor id = "script_content"  ref="child" theme="snow" spellcheck = false style="flex-grow: 1; border-radius:15px;height: 0;max-width: 100%;overflow-x: hidden;"></quill-editor>
-	<div style="height:35px;">
-            <button style="height: 35px;width:50%;font-size: medium;font-weight: bold;" @click="run_script()">发送到平台</button>
-            <button style="height: 35px;width:50%;font-size: medium;font-weight: bold;" @click="run_script2()">直接运行</button>
-	</div>
-	<div class="result-container">
-            <textarea class="result-textarea" disabled>{{result}}</textarea>
-            <div v-if="has_img" class="image-container">
-                <img v-bind:src="img_src" style="max-width: 100%;max-height: 100%;object-fit: contain;"></img>
+        <div style="height: 70%;border-radius:15px; flex-grow: 1;display: flex;flex-direction: column;max-width: 100%;overflow-x: hidden;">
+            <custom-editor ref="child" style="flex: 1; display: block; min-height: 0;"></custom-editor>
+            <div style="height:35px;">
+                <button style="height: 35px;width:50%;font-size: medium;font-weight: bold;" @click="run_script()">发送到平台</button>
+                <button style="height: 35px;width:50%;font-size: medium;font-weight: bold;" @click="run_script2()">直接运行</button>
             </div>
-            <button v-if="has_img" class="image-button" @click="showFullscreenImage()">查看图片</button>
-        </div>
-        
-        <!-- 全屏图片显示 -->
-        <div v-if="showFullscreen" class="fullscreen-image" @click="closeFullscreenImage()">
-            <img v-bind:src="img_src" style="max-width: 90%;max-height: 90%;object-fit: contain;">
-            <button class="close-button" @click.stop="closeFullscreenImage()">×</button>
-        </div>
-        
+            <div class="result-container">
+                <textarea class="result-textarea" disabled>{{result}}</textarea>
+                <div v-if="has_img" class="image-container">
+                    <img v-bind:src="img_src" style="max-width: 100%;max-height: 100%;object-fit: contain;"></img>
+                </div>
+                <button v-if="has_img" class="image-button" @click="showFullscreenImage()">查看图片</button>
+            </div>
+            
+            <!-- 全屏图片显示（仅移动端） -->
+            <div v-if="showFullscreen" class="fullscreen-image" @click="closeFullscreenImage()">
+                <img v-bind:src="img_src" style="max-width: 90%;max-height: 90%;object-fit: contain;">
+                <button class="close-button" @click.stop="closeFullscreenImage()">×</button>
+            </div>
         </div>
    </div>
    <script>
+    // ----------------------------------------------------------------
+    // 自定义双层编辑器组件 (CustomEditor) —— 移植自 pkg_edit1
+    // 高亮只写 highlightLayer(<pre>)，绝不触碰 inputLayer(<textarea>)，
+    // 因此移动端 IME 不会被刷新打断。
+    // ----------------------------------------------------------------
+    const CustomEditor = {
+        template: `
+            <div class="custom-editor-wrapper">
+                <pre ref="highlightLayer" class="editor-layer highlight-layer" aria-hidden="true"></pre>
+                <textarea 
+                    ref="inputLayer" 
+                    class="editor-layer input-layer" 
+                    spellcheck="false" 
+                    placeholder="脚本内容"
+                    @input="handleInput"
+                    @scroll="syncScroll"
+                    @keydown="handleKeyDown"
+                    @click="render"
+                    @keyup="render"
+                    @focus="render"
+                ></textarea>
+            </div>
+        `,
+        data() {
+            return {
+                MAX_COLORS: 4
+            };
+        },
+        mounted() {
+            window.addEventListener('resize', this.syncScroll);
+            this.$nextTick(() => { this.render(); this.syncScroll(); });
+        },
+        beforeUnmount() {
+            window.removeEventListener('resize', this.syncScroll);
+        },
+        methods: {
+            getText() {
+                return this.$refs.inputLayer.value;
+            },
+            setText(val) {
+                this.$refs.inputLayer.value = val || '';
+                this.$nextTick(() => { this.render(); this.syncScroll(); });
+            },
+            escapeHtml(str) {
+                return str.replace(/&/g, "&amp;")
+                          .replace(/</g, "&lt;")
+                          .replace(/>/g, "&gt;")
+                          .replace(/"/g, "&quot;")
+                          .replace(/'/g, "&#039;");
+            },
+
+            /**
+             * 预处理文本：把注释、被转义的字符全部替换为空格（仅用于括号匹配）。
+             * 必须从左到右解析，优先处理转义符。
+             */
+            maskComments(text) {
+                let arr = text.split('');
+                for (let i = 0; i < arr.length; i++) {
+                    // 1. 双反斜杠 \\（转义符本身被转义）
+                    if (arr[i] === '\\' && arr[i+1] === '\\') {
+                        arr[i] = ' '; arr[i+1] = ' ';
+                        i++;
+                        continue;
+                    }
+                    // 2. 被转义的特殊字符 \【 \】 \##
+                    if (arr[i] === '\\') {
+                        const next = arr[i+1];
+                        if (next === '【' || next === '】') {
+                            arr[i] = ' '; arr[i+1] = ' ';
+                            i++; continue;
+                        }
+                        if (next === '#' && arr[i+2] === '#') {
+                            arr[i] = ' '; arr[i+1] = ' '; arr[i+2] = ' ';
+                            i += 2; continue;
+                        }
+                    }
+                    // 3. 真正的注释 ##
+                    if (arr[i] === '#' && arr[i+1] === '#') {
+                        while(i < arr.length && arr[i] !== '\n') {
+                            arr[i] = ' ';
+                            i++;
+                        }
+                    }
+                }
+                return arr.join('');
+            },
+
+            /**
+             * 在干净文本上做深度计数，找到光标所在括号的配对索引。
+             */
+            findMatchIndices(text, cursorIndex) {
+                const matches = new Set();
+                let targetIndex = -1;
+                let char = '';
+
+                if (cursorIndex < text.length) {
+                    const c = text[cursorIndex];
+                    if (c === '【' || c === '】') {
+                        targetIndex = cursorIndex;
+                        char = c;
+                    }
+                }
+                if (targetIndex === -1 && cursorIndex > 0) {
+                    const c = text[cursorIndex - 1];
+                    if (c === '【' || c === '】') {
+                        targetIndex = cursorIndex - 1;
+                        char = c;
+                    }
+                }
+
+                if (targetIndex === -1) return matches;
+                matches.add(targetIndex);
+
+                if (char === '【') {
+                    let depth = 0;
+                    for (let i = targetIndex + 1; i < text.length; i++) {
+                        if (text[i] === '【') depth++;
+                        else if (text[i] === '】') {
+                            if (depth === 0) { matches.add(i); break; }
+                            depth--;
+                        }
+                    }
+                } else {
+                    let depth = 0;
+                    for (let i = targetIndex - 1; i >= 0; i--) {
+                        if (text[i] === '】') depth++;
+                        else if (text[i] === '【') {
+                            if (depth === 0) { matches.add(i); break; }
+                            depth--;
+                        }
+                    }
+                }
+                return matches;
+            },
+
+            render() {
+                const inputEl = this.$refs.inputLayer;
+                const highlightEl = this.$refs.highlightLayer;
+                if (!inputEl || !highlightEl) return;
+
+                const text = inputEl.value;
+                const cursorIndex = inputEl.selectionStart;
+                const cleanText = this.maskComments(text);
+                const activeIndices = this.findMatchIndices(cleanText, cursorIndex);
+
+                let html = '';
+                let depth = 1;
+
+                const getColorClass = (d) => {
+                    if (d <= 0) return 'lvl-1';
+                    const colorIdx = (d - 1) % this.MAX_COLORS + 1;
+                    return `lvl-${colorIdx}`;
+                };
+                const openSpan = (d) => `<span class="${getColorClass(d)}">`;
+                const closeSpan = () => `</span>`;
+
+                html += openSpan(1);
+
+                for (let i = 0; i < text.length; i++) {
+                    // 1. 双反斜杠 \\
+                    if (text[i] === '\\' && text[i+1] === '\\') {
+                        html += this.escapeHtml('\\\\');
+                        i++;
+                        continue;
+                    }
+                    // 2. 被转义的注释 \##
+                    if (text[i] === '\\' && text[i+1] === '#' && text[i+2] === '#') {
+                        html += this.escapeHtml('\\##');
+                        i += 2;
+                        continue;
+                    }
+                    // 3. 被转义的括号 \【 \】
+                    if (text[i] === '\\' && (text[i+1] === '【' || text[i+1] === '】')) {
+                        html += this.escapeHtml(text[i] + text[i+1]);
+                        i++;
+                        continue;
+                    }
+                    // 4. 真正的注释 ##
+                    if (text[i] === '#' && text[i+1] === '#') {
+                        let lineEnd = text.indexOf('\n', i);
+                        if (lineEnd === -1) lineEnd = text.length;
+                        const commentContent = text.substring(i, lineEnd);
+                        html += `<span class="comment-text">${this.escapeHtml(commentContent)}</span>`;
+                        i = lineEnd - 1;
+                        continue;
+                    }
+                    // 5. 常规括号处理
+                    const char = text[i];
+                    const isActive = activeIndices.has(i);
+                    const activeClass = isActive ? ' active-pair' : '';
+
+                    if (char === '【') {
+                        html += closeSpan();
+                        depth++;
+                        html += openSpan(depth);
+                        html += `<span class="${activeClass.trim()}">【</span>`;
+                    }
+                    else if (char === '】') {
+                        if (depth > 1) {
+                            html += `<span class="${activeClass.trim()}">】</span>`;
+                            html += closeSpan();
+                            depth--;
+                            html += openSpan(depth);
+                        } else {
+                            html += `<span class="error-bracket${activeClass}">】</span>`;
+                        }
+                    }
+                    else {
+                        html += this.escapeHtml(char);
+                    }
+                }
+
+                html += closeSpan();
+
+                if (text.endsWith('\n')) {
+                    html += '<br>&nbsp;';
+                }
+
+                highlightEl.innerHTML = html;
+            },
+
+            syncScroll() {
+                if (this.$refs.inputLayer && this.$refs.highlightLayer) {
+                    this.$refs.highlightLayer.scrollTop = this.$refs.inputLayer.scrollTop;
+                    this.$refs.highlightLayer.scrollLeft = this.$refs.inputLayer.scrollLeft;
+                }
+            },
+
+            handleInput() {
+                this.render();
+                this.syncScroll();
+            },
+
+            handleKeyDown(e) {
+                const inputEl = this.$refs.inputLayer;
+
+                // --- Ctrl + / 注释切换 ---
+                if (e.ctrlKey && e.key === '/') {
+                    e.preventDefault();
+                    const start = inputEl.selectionStart;
+                    const end = inputEl.selectionEnd;
+                    const value = inputEl.value;
+
+                    let startLineIndex = value.lastIndexOf('\n', start - 1) + 1;
+                    let endLineIndex = value.indexOf('\n', end);
+                    if (endLineIndex === -1) endLineIndex = value.length;
+
+                    const blockStart = startLineIndex;
+                    const blockEnd = endLineIndex;
+                    const selectedText = value.substring(blockStart, blockEnd);
+                    const lines = selectedText.split('\n');
+
+                    const validLines = lines.filter(line => line.trim().length > 0);
+                    const allCommented = validLines.length > 0 && validLines.every(line => /^\s*##/.test(line));
+
+                    let newLines;
+                    if (allCommented) {
+                        newLines = lines.map(line => line.replace(/^(\s*)## ?/, '$1'));
+                    } else {
+                        newLines = lines.map(line => {
+                            if (line.trim().length === 0) return line;
+                            return '## ' + line;
+                        });
+                    }
+
+                    const newText = newLines.join('\n');
+                    inputEl.setRangeText(newText, blockStart, blockEnd, 'select');
+                    this.handleInput();
+                    return;
+                }
+
+                // --- Tab 缩进 ---
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = inputEl.selectionStart;
+                    const end = inputEl.selectionEnd;
+                    const value = inputEl.value;
+                    const hasSelection = start !== end;
+
+                    let startLineIndex = value.lastIndexOf('\n', start - 1) + 1;
+                    let endLineIndex = value.indexOf('\n', end);
+                    if (endLineIndex === -1) endLineIndex = value.length;
+
+                    const blockStart = startLineIndex;
+                    const blockEnd = endLineIndex;
+                    const selectedText = value.substring(blockStart, blockEnd);
+                    const lines = selectedText.split('\n');
+                    let newText = '';
+
+                    if (e.shiftKey) {
+                        const modifiedLines = lines.map(line => {
+                            let removeCount = 0;
+                            if (line.startsWith('    ')) removeCount = 4;
+                            else if (line.startsWith('   ')) removeCount = 3;
+                            else if (line.startsWith('  ')) removeCount = 2;
+                            else if (line.startsWith(' ')) removeCount = 1;
+                            return line.substring(removeCount);
+                        });
+                        newText = modifiedLines.join('\n');
+                        inputEl.setRangeText(newText, blockStart, blockEnd, 'select');
+                    } else {
+                        if (!hasSelection) {
+                            document.execCommand('insertText', false, '    ');
+                        } else {
+                            const modifiedLines = lines.map(line => '    ' + line);
+                            newText = modifiedLines.join('\n');
+                            inputEl.setRangeText(newText, blockStart, blockEnd, 'select');
+                        }
+                    }
+                    this.handleInput();
+                }
+            }
+        }
+    };
+
     const { createApp } = Vue
     const app = createApp({
         data() {
             return {
                 // 用于显示
                 platform:"onebot11",
-                bot_id:"647233887",
-                groups_id:"暂不支持",
-                group_id:"439913126",
-                user_id:"",
+                bot_id:"1736293901",
+                groups_id:"556515826",
+                group_id:"556515826",
                 pkg_name:"",
+                user_id:"",
                 result:"",
                 img_src:"",
                 has_img:false,
                 showFullscreen:false,
-                last_code:"",
-                last_change_time:(new Date()).valueOf(),
-                last_index:0,
             }
         },
         mounted () {
@@ -291,25 +681,25 @@
             if (bot_id_t) {
                 this.bot_id = bot_id_t
             }else {
-                this.bot_id = "647233887"
+                this.bot_id = "1736293901"
             }
             let groups_id_t = window.localStorage.getItem('debug_groups_id');
             if (groups_id_t) {
                 this.groups_id = groups_id_t
             }else {
-                this.groups_id = "暂不支持"
+                this.groups_id = ""
             }
             let group_id_t = window.localStorage.getItem('debug_group_id');
             if (group_id_t) {
                 this.group_id = group_id_t
             }else {
-                this.group_id = "439913126"
+                this.group_id = "556515826"
             }
             let user_id_t = window.localStorage.getItem('debug_user_id');
             if (user_id_t) {
                 this.user_id = user_id_t
             }else {
-                this.user_id = "2114460639"
+                this.user_id = ""
             }
             let pkg_name_t = window.localStorage.getItem('debug_pkg_name');
             if (pkg_name_t) {
@@ -318,59 +708,6 @@
                 this.pkg_name = ""
             }
 
-            setInterval(() => {
-                quill = this.$refs.child.getQuill();
-                let sec = quill.getSelection()
-                let curr_index = 0
-                if(sec){
-                    curr_index = sec.index
-                }
-                
-                let code = quill.getText();
-                tm = (new Date()).valueOf()
-                if ((code!= this.last_code || curr_index != this.last_index) && !this.composing && tm - this.last_change_time > 300) {
-                    this.highlight()
-                    this.last_code = code
-                    this.last_index = curr_index
-                }
-            }, 500)
-
-
-            // 对复制进行hook，解决复制时多余的换行
-            ele = document.getElementById("script_content")
-            ele.oncopy = (e) => {
-                quill = this.$refs.child.getQuill()
-                range = quill.getSelection()
-                e.clipboardData.setData('text/plain', quill.getText(range.index, range.length));
-                e.preventDefault();
-            }
-            
-             // 处理中文输入
-            ele.addEventListener('compositionstart',(e) =>{
-                this.composing = true
-                console.log('compositionstart')
-            })
-            ele.addEventListener('compositionend',(e) =>{    
-                this.composing = false
-                console.log('compositionend')
-                this.last_change_time = (new Date()).valueOf()
-            })
-
-            quill = this.$refs.child.getQuill()
-            quill.on('text-change', (delta, oldDelta, source) => {
-                if (source == 'user') {
-                    if(!this.composing){
-                        this.last_change_time = (new Date()).valueOf()
-                    }
-                }
-            });
-            quill.on('selection-change', (range, oldDelta, source) => {
-                if (source == 'user') {
-                    if(!this.composing){
-                        this.last_change_time = (new Date()).valueOf()
-                    }
-                }
-            });
         },
         methods: {
             change_platform(){
@@ -392,14 +729,7 @@
                 window.localStorage.setItem('debug_pkg_name',this.pkg_name)
             },
             run_script(){
-                // 让大输入框丢失光标
-                const quill = this.$refs.child.getQuill();
-                if (quill) {
-                    quill.blur();
-                }
-                // 防止输入法弹出
-                document.activeElement.blur();
-                let content = this.$refs.child.getQuill().getText();
+                let content = this.$refs.child.getText();
                 let script = {
                     "platform":this.platform,
                     "bot_id":this.bot_id,
@@ -423,14 +753,7 @@
                 });
             },
             run_script2(){
-                // 让大输入框丢失光标
-                const quill = this.$refs.child.getQuill();
-                if (quill) {
-                    quill.blur();
-                }
-                // 防止输入法弹出
-                document.activeElement.blur();
-                let content = this.$refs.child.getQuill().getText();
+                let content = this.$refs.child.getText();
                 let script = {
                     "platform":this.platform,
                     "bot_id":this.bot_id,
@@ -442,27 +765,55 @@
                 }
                 this.result = "正在执行..."
                 this.has_img = false
+                this.img_src = ""
+                this._pending_b64 = null  // 延迟加载的 base64 原始串
+                this._pending_is_b64 = false
                 axios.post("/run_code_and_ret",script)
                 .then((res) => {
                     if(res.data['retcode'] == 0){
-                        this.result = res.data["data"]
-                        var reg = /\[CQ:image,file=(.*?)(\]|\,)/;
-                        let ret = reg.exec(this.result)
-                        if(ret && ret.length > 1) {
-                            let img = ret[1].trim()
+                        let raw = res.data["data"]
+                        // 解析 CQ:image
+                        var reg = /\[CQ:image,file=(.*?)(\]|\,)/g;
+                        let b64Matched = false
+                        let urlMatched = false
+                        let urlSrc = ""
+                        let b64Src = ""
+
+                        raw = raw.replace(reg, (match, filePart) => {
+                            let img = filePart.trim()
                             if(img.startsWith("base64://")) {
-                                this.img_src = "data:image/jpeg;base64," + img.slice(9)
-                                this.has_img = true;
+                                b64Src = img.slice(9)  // 只存纯 base64 串，不拼 data URL
+                                b64Matched = true
+                                return "[图片]"
                             } else {
-                                let img2 = img.replaceAll("[", '[')
+                                let decoded = img.replaceAll("[", '[')
                                     .replaceAll("#93;", ']')
                                     .replaceAll(",", ',')
                                     .replaceAll("&", '&')
-                                this.img_src = img2
-                                this.has_img = true;
+                                urlSrc = decoded
+                                urlMatched = true
+                                return "[图片]"
                             }
+                        })
+
+                        this.result = raw
+
+                        if(b64Matched) {
+                            if (window.matchMedia('(max-width: 768px)').matches) {
+                                // 移动端：延迟加载，避免初始渲染卡顿
+                                this._pending_b64 = b64Src
+                                this._pending_is_b64 = true
+                                this.has_img = true
+                            } else {
+                                // PC 端：直接拼 data URL（PC 浏览器处理大 base64 更稳定）
+                                this.img_src = "data:image/jpeg;base64," + b64Src
+                                this.has_img = true
+                            }
+                        } else if(urlMatched) {
+                            // URL 图片可以直接加载
+                            this.img_src = urlSrc
+                            this.has_img = true
                         }
-                        
                     }else {
                         this.result = "执行失败：" + res.data['data']
                     }
@@ -472,229 +823,23 @@
                 });
             },
             showFullscreenImage() {
-                this.showFullscreen = true;
-                // 让大输入框丢失光标
-                const quill = this.$refs.child.getQuill();
-                if (quill) {
-                    quill.blur();
+                // base64 图片延迟加载：直到显示全屏时才拼 data URL，避免初始渲染卡顿
+                if (this._pending_is_b64 && this._pending_b64) {
+                    this.img_src = "data:image/jpeg;base64," + this._pending_b64
+                    this._pending_b64 = null
+                    this._pending_is_b64 = false
                 }
-                // 防止输入法弹出
+                this.showFullscreen = true;
                 document.activeElement.blur();
             },
             closeFullscreenImage() {
                 this.showFullscreen = false;
-                // 防止输入法弹出
                 document.activeElement.blur();
             },
-            highlight()
-            {
-                var current_color = 0;
-                function next_color(){
-                    current_color = (current_color + 1) % 4;
-                }
-                function pre_color(){
-                    current_color = (current_color + 3) % 4;
-                }
-                var colorList = ["#000000","#FF0000","#0000FF","#008000"]
-                function ColorReverse(OldColorValue){
-                    var OldColorValue = "0x"+OldColorValue.replace(/#/g,"");
-                    var str="000000"+(0xFFFFFF-OldColorValue).toString(16);
-                    return '#' + str.substring(str.length-6,str.length);
-                }
-                function out_text(quill,index){
-                    colorList[current_color](quill,index)
-                }
-
-                quill = this.$refs.child.getQuill();
-                
-                select = quill.getSelection()
-                let curr_index = 0
-                if(select){
-                    curr_index = select.index
-                }
-
-                let code = quill.getText();
-                content = []
-                for(let i = 0;i<code.length;i++){
-                    if(code[i] == "【"){
-                        next_color()
-                        content.push({
-                            "insert":code[i],attributes:{color:colorList[current_color]}
-                        })
-                    }
-                    else if(code[i] == "】"){
-                        content.push({
-                            "insert":code[i],attributes:{color:colorList[current_color]}
-                        })
-                        pre_color()
-                    }
-                    else if(code[i] == "\\"){
-                        content.push({
-                            "insert":code[i],attributes:{color:colorList[current_color]}
-                        })
-                        i += 1
-                        content.push({
-                            "insert":code[i],attributes:{color:colorList[current_color]}
-                        })
-                    }
-                    else{
-                        if(code[i] == '\xa0'){
-                            content.push({
-                                "insert":" ",attributes:{color:colorList[current_color]}
-                            })
-                        }else {
-                            content.push({
-                                "insert":code[i],attributes:{color:colorList[current_color]}
-                            })
-                        }
-                    }
-                }
-                // 在这里处理光标
-                if(curr_index >= 0 && curr_index < content.length){
-                    let t = 0;
-                    if(content[curr_index].insert == "【"){
-                        t = 1;
-                        content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
-                        while(curr_index < content.length){
-                            curr_index += 1
-                            if(curr_index >= content.length)break
-                            if(content[curr_index].insert == "\\"){
-                                curr_index += 1
-                            }else if(content[curr_index].insert == "【"){
-                                t += 1
-                            }else if(content[curr_index].insert == "】"){
-                                t -= 1
-                            }
-                            if(t == 0){
-                                content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
-                                break
-                            }
-                        }
-                    }else if(content[curr_index].insert == "】") {
-                        t = 1;
-                        content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
-                        while(curr_index >= 0){
-                            curr_index -= 1
-                            if(curr_index < 0)break
-                            if(curr_index - 1 > 0 && content[curr_index - 1].insert == "\\") {
-                                curr_index -= 1
-                            }else if(content[curr_index].insert == "【"){
-                                t -= 1
-                            }else if(content[curr_index].insert == "】"){
-                                t += 1
-                            }
-                            if(t == 0){
-                                content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
-                                break
-                            }
-                        }
-                    }else if(curr_index - 1 >=0){
-                        curr_index -= 1;
-                        if(content[curr_index].insert == "【"){
-                            t = 1;
-                            content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
-                            while(curr_index < content.length){
-                                curr_index += 1
-                                if(curr_index >= content.length)break
-                                if(content[curr_index].insert == "\\"){
-                                    curr_index += 1
-                                }else if(content[curr_index].insert == "【"){
-                                    t += 1
-                                }else if(content[curr_index].insert == "】"){
-                                    t -= 1
-                                }
-                                if(t == 0){
-                                    content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
-                                    break
-                                }
-                            }
-                        }else if(content[curr_index].insert == "】") {
-                            t = 1;
-                            content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
-                            while(curr_index >= 0){
-                                curr_index -= 1
-                                if(curr_index < 0)break
-                                if(curr_index - 1 > 0 && content[curr_index - 1].insert == "\\") {
-                                    curr_index -= 1
-                                }else if(content[curr_index].insert == "【"){
-                                    t -= 1
-                                }else if(content[curr_index].insert == "】"){
-                                    t += 1
-                                }
-                                if(t == 0){
-                                    content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
-                                    break
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                quill.setContents(content)
-                quill.setSelection(select)
-            },
-        }
-    })
-    const globalOptions = {
-        modules: {
-        toolbar: ""
         },
-        placeholder: '脚本内容',
-        theme: 'snow',
-        scrollingContainer: true
-    }
+    })
 
-    // 添加自定义样式以实现自动换行
-    const style = document.createElement('style');
-    style.textContent = `
-        /* 全局容器样式 */
-        #app {
-            max-width: 100% !important;
-            overflow-x: hidden !important;
-        }
-        
-        /* Quill编辑器容器 */
-        .ql-container {
-            max-width: 100% !important;
-            overflow-x: hidden !important;
-            width: 100% !important;
-        }
-        
-        /* Quill编辑器工具栏 */
-        .ql-toolbar {
-            max-width: 100% !important;
-            overflow-x: auto !important;
-            flex-wrap: wrap !important;
-        }
-        
-        /* Quill编辑器内容 */
-        .ql-editor {
-            white-space: pre-wrap !important;
-            word-wrap: break-word !important;
-            overflow-x: hidden !important;
-            max-width: 100% !important;
-            width: 100% !important;
-        }
-        
-        /* Quill编辑器内容子元素 */
-        .ql-editor * {
-            white-space: pre-wrap !important;
-            word-wrap: break-word !important;
-            max-width: 100% !important;
-            width: 100% !important;
-        }
-        
-        /* 确保所有文本元素都自动换行 */
-        p, span, div {
-            white-space: pre-wrap !important;
-            word-wrap: break-word !important;
-            max-width: 100% !important;
-        }
-    `;
-    document.head.appendChild(style);
-
-    VueQuill.QuillEditor.props.globalOptions.default = () => globalOptions
-    app.component('QuillEditor', VueQuill.QuillEditor);
+    app.component('CustomEditor', CustomEditor);
     app.mount('#app')
    </script>
    
