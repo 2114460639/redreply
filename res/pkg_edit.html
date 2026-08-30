@@ -5,7 +5,6 @@
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
    <title>红色问答脚本编辑</title>
-   <link href='theme.css' rel='stylesheet' type='text/css'/>
    <style>
     /* 全局设置盒子模型 */
     * { box-sizing: border-box; }
@@ -17,100 +16,869 @@
         display: flex;
         margin: 0;
         padding: 0;
-        overflow: hidden; 
-        background-color: #e1ebe7;
+        background-color: #c7edcc;
     }
     button,textarea,body,select,input{
-        background-color: #e1ebe7;
-        font-family: fusion-pixel-12px-monospaced-zh_hant, "Consolas", "Courier New", monospace;
+        background-color: #c7edcc;
+        font-family: fusion-pixel-12px-monospaced-zh_hant, serif;
     }
     button:hover {
         background-color: aqua;
         color: red;
         cursor: pointer;
     }
+    button{border-radius:5px;}
+    input{border-radius:4px;}
     .name_active {
         color: red;
         font-weight: bold;
     }
+
+    /* 全局统一间距变量（上下：所有区块之间的 margin） */
+    :root {
+        --gap-block: 4px;     /* 各区块（top-panel / editor / 按钮栏）之间的上下间距 */
+        --gap-inline: 4px;    /* 左右栏之间 */
+        --gap-inline-panel: 4px;  /* 容器左右的外边距 */
+    }
+
+    /* ------- 顶部双栏布局（左元信息栏 + 右脚本列表栏） ------- */
+    .top-panel {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+        gap: var(--gap-inline);
+        flex: 0 0 auto;
+        margin: 0 0 var(--gap-block) 0;
+        align-items: stretch;
+    }
+    /* 左侧：元信息栏（label + 控件 逐行堆叠），背景同主题，实线细边框 */
+    .meta-panel {
+        flex: 0 0 20%;
+        min-width: 220px;
+        max-width: 24%;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 4px 6px;
+        border: 1px solid #7fa89c;
+        border-radius: 6px;
+        background-color: #c7edcc;
+    }
+    .meta-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        line-height: 1.8em;
+    }
+    .meta-row label {
+        flex: 0 0 auto;
+        display: inline-block;
+        /* 目标：4 汉字 + 1 半角空格 + 冒号。每汉字 1em，半角空格 0.5em，冒号 0.5em → 总 5em 对齐；
+           配合字间已补的空格/全角空格，使「触(1em)发(1em)方(1em)式(1em) + (空格0.5em) + (冒号0.5em) ≈ 5em」
+           取 5.2em 稍留余量保证短 label 不会因为字体渲染差被压缩换行 */
+        width: 5.2em;
+        min-width: 5.2em;
+        white-space: nowrap;
+        text-align: left;
+        padding-right: 0;
+        color: #222;
+    }
+    /* 输入框/下拉框统一宽度：在 meta-row 剩余空间内全部拉齐 */
+    .meta-row input,
+    .meta-row select {
+        flex: 1 1 0%;
+        min-width: 0;
+        width: 0;
+        height: 1.9em;
+        padding: 1px 4px;
+        border: 1px solid #888;
+        border-radius: 4px;
+        font-size: 12px;
+        background-color: #c7edcc;
+    }
+    .meta-row .link-btn {
+        flex: 0 0 auto;
+        height: 1.9em;
+        padding: 0 6px;
+        font-size: 12px;
+        margin-left: 2px;
+    }
+    .meta-row.single-btn {
+        justify-content: stretch;
+    }
+    .meta-row.single-btn button {
+        flex: 1 1 0%;
+        height: 1.9em;
+        font-size: 12px;
+        width: 0;
+    }
+
+    /* 右侧：脚本堆叠区域（多行、最多5行，超出滚动），背景同主题 */
+    .script-board {
+        flex: 1 1 auto;
+        min-width: 0;
+        border: 1px solid #7fa89c;
+        border-radius: 6px;
+        background-color: #c7edcc;
+        padding: 6px;
+        position: relative;
+        overflow: hidden;
+    }
+    .script-board-inner {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: flex-start;
+        gap: 6px;
+        max-height: calc((2em + 10px) * 5); /* 最多5行 */
+        overflow-y: auto;
+        overflow-x: hidden;
+        width: 100%;
+        height: 100%;
+        position: relative;
+    }
+    .script-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        margin: 0;
+        height: 2em;
+        line-height: 2em;
+        white-space: nowrap;
+        font-size: 13px;
+        border: 1px solid #7fa89c;
+        border-radius: 5px;
+        background-color: #c7edcc;   /* 改为主题背景色 */
+        color: #111;
+        /* PC：悬停默认不改变光标；开启拖拽后全局 cursor-grabbing 会生效 */
+        cursor: default;
+        user-select: none;
+        -webkit-user-select: none;        /* WebKit/Safari */
+        -moz-user-select: none;           /* Firefox */
+        -ms-user-select: none;            /* Edge/Legacy IE */
+        -webkit-touch-callout: none;      /* iOS: 禁止长按弹出系统菜单/选择文本 */
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-drag: none;          /* 禁止原生 HTML5 drag */
+        box-sizing: border-box;
+        /* 默认：允许浏览器原生滚动（起点落在 chip 上也能上下滑动列表）
+           仅当长按 0.3s 真正进入拖拽后，才由 JS 动态切到 touch-action:none */
+        touch-action: auto;
+        transition: background-color .12s, box-shadow .12s, transform .12s, opacity .12s;
+    }
+    /* 移动端进入真正拖拽时，给板内所有 chip / 板自身统一禁用默认滚动手势 */
+    .script-board.touch-drag-active,
+    .script-board.touch-drag-active * {
+        touch-action: none !important;
+    }
+    /* 拖拽进行中：冻结页面级滚动，禁止外层 scroll 条上下跟着动
+       (只限制 body/html 级别的滚动；内层 script-board 由边缘触发的慢速 auto-scroll 控制) */
+    body.drag-freeze-scroll {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden !important;
+        overscroll-behavior: none;
+        /* 保持视觉上未发生跳变：由 JS 记录 scrollY 并在 --freeze-scroll-top 里通过 margin-top 回补 */
+        margin-top: var(--freeze-scroll-top, 0px);
+    }
+    html.drag-freeze-scroll-html {
+        overflow: hidden !important;
+        overscroll-behavior: none;
+    }
+    /* 拖拽真正 started 后：把内层 script-board-inner 的原生滚动也锁死，
+       让 scrollTop 只能由我们的边缘 auto-scroll 定时器改变（避免触摸/鼠标拖拽时内层跟着滑动）
+       用 pointer-events 抑制触摸滚动画笔；同时保留键盘/滚轮之外触摸滚动入口 */
+    .script-board-inner.drag-freeze-inner {
+        overflow-y: hidden !important;
+        overscroll-behavior: contain;
+    }
+    /* 保持原可视高度（即使 overflow 切换 hidden 也不要把内容挤出来）——
+       原 max-height 仍由 @media 决定，这里只加 overflow 强制层 */
+    /* 正在拖拽中：全局设置 grabbing 图标（跨浏览器兼容写法） */
+    body.is-dragging,
+    body.is-dragging * {
+        cursor: grabbing !important;                      /* Modern */
+        cursor: -webkit-grabbing !important;              /* Safari/Chrome old */
+        cursor: -moz-grabbing !important;                 /* Firefox old */
+    }
+    /* macOS Safari 下单独再做兜底（有些版本不认 -webkit-grabbing on body） */
+    @supports (-webkit-appearance: none) {
+        body.is-dragging,
+        body.is-dragging * {
+            cursor: -webkit-grabbing !important;
+        }
+    }
+    .script-chip:hover {
+        background-color: #a8d9ae;   /* 鼠标悬停变暗（保留） */
+        box-shadow: 0 2px 4px rgba(0,0,0,.12);
+    }
+    .script-chip.active {
+        color: red;
+        font-weight: bold;
+        border-color: #c0392b;
+        background-color: #c7edcc;  /* 选中态仍保留主题底，文字红色 */
+        outline: 1px solid #c0392b;
+    }
+    .script-chip.active:hover {
+        background-color: #a8d9ae;   /* 选中态悬停也变暗 */
+    }
+    .script-chip.dragging {
+        opacity: .4;
+        cursor: grabbing;
+    }
+    .script-chip.ghost {
+        position: fixed;
+        pointer-events: none;
+        z-index: 9999;
+        opacity: .85;
+        box-shadow: 0 6px 14px rgba(0,0,0,.25);
+        cursor: grabbing;
+        transform: rotate(-2deg);
+        color: #111;
+        background-color: #c7edcc;
+    }
+    /* 拖拽时的预计放置位置占位 */
+    .script-placeholder {
+        display: inline-flex;
+        height: 2em;
+        padding: 0 8px;
+        border: 2px dashed #d35400;
+        border-radius: 5px;
+        background-color: rgba(243, 156, 18, 0.15);
+        box-sizing: border-box;
+        animation: pulse-placeholder 1s ease-in-out infinite alternate;
+    }
+    @keyframes pulse-placeholder {
+        from { box-shadow: 0 0 0 0 rgba(243, 156, 18, .4); }
+        to   { box-shadow: 0 0 0 4px rgba(243, 156, 18, .05); }
+    }
+    .script-empty-hint {
+        padding: 3px 5px;
+        margin: 2px 5px;
+        white-space: nowrap;
+        font-size: 12px;
+        color: #555;
+    }
+
+    /* --- 自定义编辑器核心样式 --- */
+    .custom-editor-wrapper {
+        position: relative;
+        width: 99.5%;
+        height: 100%;
+        border: 1px solid;
+        border-radius:5px;
+        background-color: #c7edcc; 
+        overflow: hidden;
+        font-family: fusion-pixel-12px-monospaced-zh_hant, serif; 
+        margin: 0 auto;
+    }
+
+    .editor-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        border: 0;
+        padding: 10px;
+        font-family: fusion-pixel-12px-monospaced-zh_hant, serif;
+        font-size: 14px;
+        line-height: 1.5;
+        letter-spacing: 0;
+        font-weight: normal;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow-y: auto; 
+        overflow-x: hidden;
+        outline: none;
+        resize: none;
+        tab-size: 4;
+        box-sizing: border-box;
+    }
+
+    .highlight-layer {
+        z-index: 1;
+        background-color: transparent;
+        color: #000;
+        pointer-events: none; 
+    }
+
+    .input-layer {
+        z-index: 2;
+        color: transparent;
+        background-color: transparent;
+        caret-color: #000;
+    }
+    .input-layer::selection {
+        background: rgba(0, 120, 215, 0.3);
+        color: transparent;
+    }
+
+    .lvl-1 { color: #000000; }
+    .lvl-2 { color: #FF0000; }
+    .lvl-3 { color: #0000FF; }
+    .lvl-4 { color: #008000; }
+
+    .error-bracket {
+        color: #ff0000;
+        text-decoration: wavy underline;
+    }
+
+    .active-pair {
+        background-color: rgba(0, 0, 0, 0.1);
+        border-radius: 3px;
+        box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
+    }
+
+    .comment-text {
+        color: #008000 !important;
+        font-style: italic;
+    }
+
+    /* PC端（>=769px 或横屏平板）：原布局保持不变 */
+    @media (min-width: 769px) {
+        .label-pc { width: 6%; }
+        .input-pc { width: 93%; }
+    }
+
+    /* 移动端（竖屏 <=768px）：左栏约 40%，label 隐藏，右侧脚本板最多 5 行 */
+    @media (max-width: 768px) {
+        /* 用户要求左栏约 40% 宽度；label 仍隐藏（仅显示输入框） */
+        .meta-panel {
+            flex: 0 0 40%;
+            min-width: 40%;
+            max-width: 40%;
+            padding: 4px 6px;
+            gap: 4px;
+        }
+        .meta-row label {
+            display: none !important;    /* 左栏文本描述全部隐藏 */
+        }
+        .meta-row input,
+        .meta-row select {
+            width: 100%;
+            font-size: 12px;
+        }
+        .meta-row .link-btn {
+            padding: 0 6px;
+            font-size: 12px;
+        }
+        .meta-row.single-btn button {
+            font-size: 12px;
+        }
+        /* 脚本板：占约 60%，严格最多 5 行，超出显示滚动条 */
+        .script-board {
+            padding: 6px;
+            flex: 0 0 60%;
+            min-width: 0;
+            max-width: 60%;
+            /* 让左右面板等高：两端撑满 */
+            align-self: stretch;
+        }
+        .script-board-inner {
+            /* 再缩减 30%：原 calc(9.5em + 36px) * 0.7 ≈ 6.65em + 25px */
+            max-height: calc(6.65em + 25px);
+            gap: 5px;
+            padding: 0;
+        }
+        .script-chip {
+            height: 1.9em;
+            line-height: 1.9em;
+            padding: 1px 7px;
+            font-size: 12px;
+        }
+        /* 编辑器与按钮在移动端稍微压缩 */
+        #app {
+            max-width: 100% !important;
+            margin: 1px 2px !important;
+            padding: 3px !important;
+        }
+        /* 底部 5 个按钮移动端改更小字号/高度 */
+        #app > div:last-of-type button {
+            height: 36px !important;
+            font-size: 12px !important;
+            padding: 0 4px !important;
+        }
+    }
+
+    /* 极窄屏 (<=420px)：保持 40% 比例，仅字号、内边距微调 */
+    @media (max-width: 420px) {
+        .meta-panel {
+            flex: 0 0 40%;
+            min-width: 40%;
+            max-width: 40%;
+            padding: 3px 4px;
+        }
+        .meta-row input,
+        .meta-row select,
+        .meta-row .link-btn,
+        .meta-row.single-btn button {
+            font-size: 11px;
+        }
+        .script-board {
+            flex: 0 0 60%;
+            min-width: 0;
+            max-width: 60%;
+            padding: 5px;
+        }
+        .script-board-inner {
+            /* 原 calc(9.5em + 32px) * 0.7 ≈ 6.65em + 22px */
+            max-height: calc(6.65em + 22px);
+        }
+    }
    </style>
-    <link rel="stylesheet" href="./custom_editor.css">
-    <script src="fetch-utils.js"></script>
+    <script src="axios.js"></script>
     <script src="vue.js"></script>
-    <script src="vue3-sfc-loader.min.js"></script>
 </head>
 
 <body>
    
-   <div id="app" style="border: 1px solid; display: flex; flex-direction: column; flex: 1; overflow: hidden; margin: 0.4em; position: relative;"> 
-        <h1 style="text-align: center;color: red;">编辑:{{pkg_name}}</h1>
-        
-        <div style="display: flex;overflow-x: auto;border: 0.1em;border-style:outset;border-spacing: 1px;background-color:#b8e7e4; flex-shrink: 0;">
-            <button v-for="(code,index) in pkg_codes" style="padding: 0.3em; margin: 0.2em;white-space:nowrap;cursor: pointer;" @click="select_name_change(index)" :class="{name_active:index==select_index}" v-bind:key="index"
-                draggable="true"    
-                @dragstart="dragStart($event, index)"
-                @dragover="allowDrop"
-                @drop="drop($event, index)" @dragend="dragEnd"
-            >
-                {{ code["name"] }}
-            </button>
-            <div v-if="select_index == -1" style="padding: 0.3em; margin: 0.2em;white-space:nowrap;">无脚本，请点击[新增脚本]吧，亲~</div>
-            <div v-if="pkg_codes.length > 1" style="padding: 0.3em; margin: 0.2em;white-space:nowrap;">可以拖拽调整显示顺序哦，亲~</div>
-        </div>
-        <div style="display: flex;margin: 0.2em; flex-shrink: 0;">
-            <span>脚本名：</span>
-            <input v-model = "script_name" style="flex: 1 0 auto; min-width: 0;"></input>
-        </div>
-        <div class="input_div" style="display: flex; flex-shrink: 0;">
-            <span>介绍：&emsp;</span>
-            <input id="script_description" v-model="script_description" style="flex: 1 0 auto; min-width: 0;"></input>
-        </div>
-        <select id="script_cffs" v-model="script_cffs" style="margin: 0.2em;height: 1.5em;cursor: pointer; flex-shrink: 0;">
-            <option disabled value="触发方式">触发方式</option>
-            <option value ="群聊触发">群聊触发</option>
-            <option value ="私聊触发">私聊触发</option>
-            <option value="群、私聊触发">群、私聊触发</option>
-            <option value="事件触发">事件触发</option>
-            <option value="框架初始化">框架初始化</option>
-            <option value="CRON定时器">CRON定时器</option>
-            <option value="脚本错误">脚本错误</option>
-            <option value="群成员增加">群成员增加</option>
-            <option value="网络触发">网络触发</option>
-            <option value="内容过滤">内容过滤</option>
-            <option value="延迟触发">延迟触发</option>
-        </select>
-        <div style="display: flex; align-items: center; flex-shrink: 0;" v-if="(script_cffs != '框架初始化') && (script_cffs != '脚本错误') && (script_cffs != '群成员增加') && (script_cffs != '内容过滤')" class="input_div">
-            <span>关键词：</span>
-            <input id="script_keyword" v-model="script_keyword" :style="script_cffs == '网络触发' && script_ppfs == '完全匹配' ? { flex: '1', minWidth: '0' } : { flex: '1 0 auto', minWidth: '0' }"></input>
-            <button v-if="script_cffs == '网络触发' && script_ppfs == '完全匹配'" @click="openWebTriggerUrl()" :style="{ flex: '1', marginLeft: '0.5em' }"><b>打开网页</b></button>
-        </div>
-        <select id="script_ppfs" v-model="script_ppfs" v-if="(script_cffs == '群聊触发') || (script_cffs == '私聊触发') || (script_cffs == '群、私聊触发') || (script_cffs == '网络触发') || (script_cffs == '延迟触发')" style="margin-top: 0.2em;height: 1.5em;cursor: pointer; flex-shrink: 0;">
-            <option disabled value="匹配方式">匹配方式</option>
-            <option value ="完全匹配">完全匹配</option>
-            <option value ="正则匹配">正则匹配</option>
-            <option value="模糊匹配">模糊匹配</option>
-            <option value="前缀匹配">前缀匹配</option>
-        </select>
-        <button v-if="script_cffs == 'CRON定时器'" @click="cron()" style="flex-shrink: 0;">
-            红色问答CRON校验工具
-        </button>
-            
-        <div style="flex: 1 1 auto; height: 0; width: 100%; display: flex; flex-direction: column; margin-top: 5px; margin-bottom: 5px;">
-            <custom-editor ref="child"></custom-editor>
+   <div id="app" style="border-radius:10px;border: 1px solid;display: flex;flex-direction: column;flex: 0 1 100%;overflow: hidden;margin: 2px 5px; padding: 5px;"> 
+
+        <!-- 顶部：左侧元信息 + 右侧脚本板 -->
+        <div class="top-panel">
+            <!-- 左红框：元信息栏 -->
+            <div class="meta-panel">
+                <div class="meta-row">
+                    <label>脚 本 名 ：</label>
+                    <input v-model="script_name" />
+                </div>
+                <div class="meta-row">
+                    <label>介&#x3000;&#x3000;绍 ：</label>
+                    <input id="script_description" v-model="script_description" />
+                </div>
+                <div class="meta-row">
+                    <label>触发方式 ：</label>
+                    <select id="script_cffs" v-model="script_cffs">
+                        <option disabled value="">触发方式</option>
+                        <option value="群聊触发">群聊触发</option>
+                        <option value="私聊触发">私聊触发</option>
+                        <option value="群、私聊触发">群、私聊触发</option>
+                        <option value="事件触发">事件触发</option>
+                        <option value="框架初始化">框架初始化</option>
+                        <option value="CRON定时器">CRON定时器</option>
+                        <option value="脚本错误">脚本错误</option>
+                        <option value="群成员增加">群成员增加</option>
+                        <option value="网络触发">网络触发</option>
+                        <option value="内容过滤">内容过滤</option>
+                        <option value="延迟触发">延迟触发</option>
+                    </select>
+                </div>
+                <div class="meta-row" v-if="needKeywordRow()">
+                    <label>关 键 词 ：</label>
+                    <input id="script_keyword" v-model="script_keyword" style="flex: 1 1 0%; width: 0;" />
+                    <button v-if="script_cffs == '网络触发' && script_ppfs == '完全匹配'" class="link-btn" @click="openWebTriggerUrl()"><b>打开</b></button>
+                </div>
+                <div class="meta-row" v-if="needMatchRow()">
+                    <label>匹配方式 ：</label>
+                    <select id="script_ppfs" v-model="script_ppfs">
+                        <option disabled value="">匹配方式</option>
+                        <option value="完全匹配">完全匹配</option>
+                        <option value="正则匹配">正则匹配</option>
+                        <option value="模糊匹配">模糊匹配</option>
+                        <option value="前缀匹配">前缀匹配</option>
+                    </select>
+                </div>
+                <div class="meta-row single-btn" v-if="script_cffs == 'CRON定时器'">
+                    <button @click="cron()">红色问答CRON校验工具</button>
+                </div>
+            </div>
+
+            <!-- 右红框：脚本堆叠板 -->
+            <div class="script-board" ref="board">
+                <div class="script-board-inner" ref="boardInner">
+                    <!-- 预计放置位置：橙色虚线占位 -->
+                    <div v-if="dragState.dragging && dragState.placeholderIndex !== null && dragState.placeholderIndex === -1" class="script-placeholder" :style="placeholderStyle()"></div>
+                    <template v-for="(code, index) in pkg_codes" :key="index">
+                        <div v-if="dragState.dragging && dragState.placeholderIndex === index" class="script-placeholder" :style="placeholderStyle(index)"></div>
+                        <div class="script-chip"
+                             :class="{ active: index === select_index, dragging: dragState.started && dragState.fromIndex === index }"
+                             :data-idx="index"
+                             @mousedown.prevent="chipMouseDown($event, index)"
+                             @touchstart="chipTouchStart($event, index)"
+                             @touchmove="chipTouchMove($event, index)"
+                             @touchend="chipTouchEnd($event, index)"
+                             @touchcancel="chipTouchEnd($event, index)"
+                             @click="selectChip(index)">
+                            {{ code["name"] }}
+                        </div>
+                    </template>
+                    <!-- 末尾占位（当 placeholderIndex 等于数组长度时） -->
+                    <div v-if="dragState.dragging && dragState.placeholderIndex !== null && dragState.placeholderIndex >= pkg_codes.length && pkg_codes.length > 0" class="script-placeholder" :style="placeholderStyle(pkg_codes.length)"></div>
+
+                    <div v-if="select_index == -1 && pkg_codes.length == 0" class="script-empty-hint">无脚本，请点击[新增脚本]吧，亲~</div>
+                    <div v-if="pkg_codes.length > 1" class="script-empty-hint">脚本可任意方向拖动，越界会取消~</div>
+                </div>
+            </div>
         </div>
 
-        <div style="display: flex;flex: 0 0 auto;">
-            <button ref="child1" disabled true style="height: 40px;font-size: medium;font-weight: bold;flex: 1 0 auto;" @click="add_code()">新增脚本</button>
-            <button ref="child2" disabled true style="height: 40px;font-size: medium;font-weight: bold;flex: 1 0 auto;" @click="save_code()">保存脚本</button>
-            <button ref="child3" disabled true style="height: 40px;font-size: medium;font-weight: bold;flex: 1 0 auto;" @click="del_code()">删除脚本</button>
+        <!-- 脚本代码编辑器 -->
+        <div style="flex: 1 1 auto; height: 0; width: 100%; margin: 0 0 var(--gap-block) 0; min-height: 0;">
+            <custom-editor ref="child" style="flex: 1; display: block;"></custom-editor>
         </div>
+
+        <!-- 底部按钮 -->
+        <div style="display: flex;flex: 0 0 auto;margin: 0 auto 0;width: 100%;">
+            <button ref="child1" disabled true style="height: 40px;font-size: smaller;font-weight: bold;flex: 1 1 0%; width:0;" @click="add_code()">新增脚本</button>
+            <button style="height:40px;font-size:smaller;font-weight:bold;flex:1 1 0%; width:0;" onclick="window.open('/docs/index.html#/detailref/','_blank')">帮助</button>
+            <button ref="child2" disabled true style="height: 40px;font-size: smaller;font-weight: bold;flex: 1 1 0%; width:0;" @click="save_code()">保存脚本</button>
+            <button ref="child3" disabled true style="height: 40px;font-size: smaller;font-weight: bold;flex: 1 1 0%; width:0;" @click="del_code()">删除脚本</button>
+            <button style="height:40px;font-size:smaller;font-weight:bold;flex:1 1 0%; width:0;" onclick="window.open('/debug.html','_blank')">调试</button>
+        </div>
+
         <div v-if="showToast" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.7); color: white; padding: 10px 20px; border-radius: 5px; z-index: 1000;">
             {{ toastMessage }}
         </div>
    </div>
 
    <script>
-    // 使用 vue3-sfc-loader 动态加载 custom_editor.vue
+    // ----------------------------------------------------------------
+    // 自定义编辑器组件 (CustomEditor)
+    // ----------------------------------------------------------------
+    const CustomEditor = {
+        template: `
+            <div class="custom-editor-wrapper">
+                <pre ref="highlightLayer" class="editor-layer highlight-layer" aria-hidden="true"></pre>
+                <textarea 
+                    ref="inputLayer" 
+                    class="editor-layer input-layer" 
+                    spellcheck="false" 
+                    placeholder="请输入脚本内容..."
+                    @input="handleInput"
+                    @scroll="syncScroll"
+                    @keydown="handleKeyDown"
+                    @click="render"
+                    @keyup="render"
+                    @focus="render"
+                ></textarea>
+            </div>
+        `,
+        data() {
+            return {
+                MAX_COLORS: 4
+            };
+        },
+        mounted() {
+            window.addEventListener('resize', this.syncScroll);
+        },
+        beforeUnmount() {
+            window.removeEventListener('resize', this.syncScroll);
+        },
+        methods: {
+            getText() {
+                return this.$refs.inputLayer.value;
+            },
+            setText(val) {
+                this.$refs.inputLayer.value = val || '';
+                this.$nextTick(() => {
+                    this.render(); 
+                    this.syncScroll(); 
+                });
+            },
+            escapeHtml(str) {
+                return str.replace(/&/g, "&amp;")
+                          .replace(/</g, "&lt;")
+                          .replace(/>/g, "&gt;")
+                          .replace(/"/g, "&quot;")
+                          .replace(/'/g, "&#039;");
+            },
+
+            /**
+             * 预处理文本：
+             * 将所有不应该参与括号匹配的内容（注释、被转义的字符）全部替换为空格
+             * 必须严格按照从左到右的顺序解析，优先处理转义符
+             */
+            maskComments(text) {
+                let arr = text.split('');
+                for (let i = 0; i < arr.length; i++) {
+                    // 1. 优先处理双反斜杠 \\ (转义符本身被转义)
+                    //    例如 \\## -> 第一个\转义了第二个\，所以##有效
+                    //    我们把两个 \ 都涂白，跳过它们
+                    if (arr[i] === '\\' && arr[i+1] === '\\') {
+                        arr[i] = ' '; arr[i+1] = ' ';
+                        i++; 
+                        continue;
+                    }
+
+                    // 2. 处理被转义的特殊字符：\【, \】, \##
+                    //    注意：因为上面已经处理了 \\，所以这里遇到的 \ 一定是单独的转义符
+                    if (arr[i] === '\\') {
+                        // 检查后面是不是需要转义的字符
+                        const next = arr[i+1];
+                        if (next === '【' || next === '】') {
+                            arr[i] = ' '; arr[i+1] = ' ';
+                            i++; continue;
+                        }
+                        // 如果是 \##，也要把它们涂白，防止被当成注释
+                        if (next === '#' && arr[i+2] === '#') {
+                            arr[i] = ' '; arr[i+1] = ' '; arr[i+2] = ' ';
+                            i += 2; continue;
+                        }
+                    }
+
+                    // 3. 处理真正的注释 ##
+                    if (arr[i] === '#' && arr[i+1] === '#') {
+                        // 将这一行剩下的内容全部涂白
+                        while(i < arr.length && arr[i] !== '\n') {
+                            arr[i] = ' ';
+                            i++;
+                        }
+                    }
+                }
+                return arr.join('');
+            },
+
+            findMatchIndices(text, cursorIndex) {
+                // text 是经过 maskComments 处理过的 "干净" 文本
+                const matches = new Set();
+                let targetIndex = -1;
+                let char = '';
+
+                if (cursorIndex < text.length) {
+                    const c = text[cursorIndex];
+                    if (c === '【' || c === '】') {
+                        targetIndex = cursorIndex;
+                        char = c;
+                    }
+                }
+                if (targetIndex === -1 && cursorIndex > 0) {
+                    const c = text[cursorIndex - 1];
+                    if (c === '【' || c === '】') {
+                        targetIndex = cursorIndex - 1;
+                        char = c;
+                    }
+                }
+
+                if (targetIndex === -1) return matches;
+                matches.add(targetIndex);
+                
+                if (char === '【') {
+                    let depth = 0;
+                    for (let i = targetIndex + 1; i < text.length; i++) {
+                        if (text[i] === '【') depth++;
+                        else if (text[i] === '】') {
+                            if (depth === 0) { matches.add(i); break; }
+                            depth--;
+                        }
+                    }
+                } else {
+                    let depth = 0;
+                    for (let i = targetIndex - 1; i >= 0; i--) {
+                        if (text[i] === '】') depth++;
+                        else if (text[i] === '【') {
+                            if (depth === 0) { matches.add(i); break; }
+                            depth--;
+                        }
+                    }
+                }
+                return matches;
+            },
+
+            render() {
+                const inputEl = this.$refs.inputLayer;
+                const highlightEl = this.$refs.highlightLayer;
+                if (!inputEl || !highlightEl) return;
+
+                const text = inputEl.value;
+                const cursorIndex = inputEl.selectionStart;
+                const cleanText = this.maskComments(text);
+                const activeIndices = this.findMatchIndices(cleanText, cursorIndex);
+
+                let html = '';
+                let depth = 1;
+
+                const getColorClass = (d) => {
+                    if (d <= 0) return 'lvl-1'; 
+                    const colorIdx = (d - 1) % this.MAX_COLORS + 1;
+                    return `lvl-${colorIdx}`;
+                };
+
+                const openSpan = (d) => `<span class="${getColorClass(d)}">`;
+                const closeSpan = (d) => `</span>`;
+
+                html += openSpan(1); 
+
+                for (let i = 0; i < text.length; i++) {
+                    
+                    // 1. 优先处理双反斜杠 \\ (转义符本身的转义)
+                    //    如果不先处理这个，后面的逻辑会把 \\## 误判为 \## (被转义的注释)
+                    if (text[i] === '\\' && text[i+1] === '\\') {
+                        html += this.escapeHtml('\\\\'); // 输出两个反斜杠
+                        i++; // 跳过下一个反斜杠
+                        continue;
+                    }
+
+                    // 2. 处理被转义的注释符号 \## (不应显示为绿色)
+                    if (text[i] === '\\' && text[i+1] === '#' && text[i+2] === '#') {
+                        html += this.escapeHtml('\\##'); 
+                        i += 2; // 跳过 ##
+                        continue;
+                    }
+
+                    // 3. 处理被转义的括号 \【 或 \】
+                    if (text[i] === '\\' && (text[i+1] === '【' || text[i+1] === '】')) {
+                        html += this.escapeHtml(text[i] + text[i+1]);
+                        i++; 
+                        continue;
+                    }
+
+                    // 4. 处理真正的注释 ##
+                    if (text[i] === '#' && text[i+1] === '#') {
+                        let lineEnd = text.indexOf('\n', i);
+                        if (lineEnd === -1) lineEnd = text.length;
+                        const commentContent = text.substring(i, lineEnd);
+                        html += `<span class="comment-text">${this.escapeHtml(commentContent)}</span>`;
+                        i = lineEnd - 1; 
+                        continue; 
+                    }
+
+                    // 5. 常规括号处理
+                    const char = text[i];
+                    const isActive = activeIndices.has(i);
+                    const activeClass = isActive ? ' active-pair' : '';
+
+                    if (char === '【') {
+                        html += closeSpan(depth);
+                        depth++;
+                        html += openSpan(depth);
+                        html += `<span class="${activeClass}">【</span>`; 
+                    } 
+                    else if (char === '】') {
+                        if (depth > 1) {
+                            html += `<span class="${activeClass}">】</span>`;
+                            html += closeSpan(depth);
+                            depth--;
+                            html += openSpan(depth);
+                        } else {
+                            html += `<span class="error-bracket${activeClass}">】</span>`;
+                        }
+                    } 
+                    else {
+                        html += this.escapeHtml(char);
+                    }
+                }
+                
+                html += closeSpan(depth);
+
+                if (text.endsWith('\n')) {
+                    html += '<br>&nbsp;';
+                }
+
+                highlightEl.innerHTML = html;
+            },
+
+            syncScroll() {
+                if (this.$refs.inputLayer && this.$refs.highlightLayer) {
+                    this.$refs.highlightLayer.scrollTop = this.$refs.inputLayer.scrollTop;
+                    this.$refs.highlightLayer.scrollLeft = this.$refs.inputLayer.scrollLeft;
+                }
+            },
+            
+            handleInput() {
+                this.render();
+                this.syncScroll();
+            },
+
+            handleKeyDown(e) {
+                const inputEl = this.$refs.inputLayer;
+                
+                // --- Ctrl + / 注释切换功能 ---
+                if (e.ctrlKey && e.key === '/') {
+                    e.preventDefault();
+                    
+                    const start = inputEl.selectionStart;
+                    const end = inputEl.selectionEnd;
+                    const value = inputEl.value;
+                    
+                    // 找到光标涉及的所有行
+                    let startLineIndex = value.lastIndexOf('\n', start - 1) + 1; 
+                    let endLineIndex = value.indexOf('\n', end);
+                    if (endLineIndex === -1) endLineIndex = value.length;
+                    
+                    // 修正: 如果光标刚好在行首，且选区不为空，endLineIndex可能指向了不该包含的下一行
+                    // 但这里我们简单处理：只要涉及到的行都处理
+                    if (end > start && value[end-1] === '\n') {
+                        // 如果选区正好结束在换行符，通常意味着不想包含下一行
+                        // 需要回溯找上一个换行符
+                        // 这里为简化逻辑，暂不特殊回退，通常 IDE 行为是包含
+                    }
+
+                    const blockStart = startLineIndex;
+                    const blockEnd = endLineIndex;
+                    const selectedText = value.substring(blockStart, blockEnd);
+                    const lines = selectedText.split('\n');
+
+                    // 判断是否所有行都已经注释了
+                    // 忽略空行
+                    const validLines = lines.filter(line => line.trim().length > 0);
+                    const allCommented = validLines.length > 0 && validLines.every(line => /^\s*##/.test(line));
+
+                    let newLines;
+                    if (allCommented) {
+                        // 取消注释：移除开头的 "## " 或 "##"
+                        newLines = lines.map(line => line.replace(/^(\s*)## ?/, '$1'));
+                    } else {
+                        // 添加注释：在行首添加 "## "
+                        newLines = lines.map(line => {
+                            // 空行通常不注释，或者注释了也没关系
+                            if (line.trim().length === 0) return line;
+                            return '## ' + line;
+                        });
+                    }
+
+                    const newText = newLines.join('\n');
+                    inputEl.setRangeText(newText, blockStart, blockEnd, 'select');
+                    this.handleInput();
+                    return;
+                }
+
+                // --- Tab 缩进功能 ---
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = inputEl.selectionStart;
+                    const end = inputEl.selectionEnd;
+                    const value = inputEl.value;
+                    const hasSelection = start !== end;
+                    
+                    let startLineIndex = value.lastIndexOf('\n', start - 1) + 1; 
+                    let endLineIndex = value.indexOf('\n', end);
+                    if (endLineIndex === -1) endLineIndex = value.length;
+
+                    const blockStart = startLineIndex;
+                    const blockEnd = endLineIndex;
+                    const selectedText = value.substring(blockStart, blockEnd);
+                    const lines = selectedText.split('\n');
+                    let newText = '';
+
+                    if (e.shiftKey) {
+                        const modifiedLines = lines.map(line => {
+                            let removeCount = 0;
+                            if (line.startsWith('    ')) removeCount = 4;
+                            else if (line.startsWith('   ')) removeCount = 3;
+                            else if (line.startsWith('  ')) removeCount = 2;
+                            else if (line.startsWith(' ')) removeCount = 1;
+                            return line.substring(removeCount);
+                        });
+                        newText = modifiedLines.join('\n');
+                        inputEl.setRangeText(newText, blockStart, blockEnd, 'select');
+                    } else {
+                        if (!hasSelection) {
+                            document.execCommand('insertText', false, '    ');
+                        } else {
+                            const modifiedLines = lines.map(line => '    ' + line);
+                            newText = modifiedLines.join('\n');
+                            inputEl.setRangeText(newText, blockStart, blockEnd, 'select');
+                        }
+                    }
+                    this.handleInput(); 
+                }
+            }
+        }
+    };
+
     function getQueryVariable(variable)
     {
         var query = window.location.search.substring(1);
@@ -121,7 +889,7 @@
         }
         return(false);
     }
-    const { createApp } = Vue;
+    const { createApp } = Vue
     const app = createApp({
         data() {
             return {
@@ -134,7 +902,39 @@
                 script_keyword:"",
                 pkg_name:"",
                 showToast: false,
-                toastMessage: ""
+                toastMessage: "",
+                // 拖拽状态
+                dragState: {
+                    dragging: false,      // 进入拖拽逻辑（已 mousedown/touchstart，正在或未超过阈值）
+                    started: false,       // 是否已真正进入拖拽（超过阈值后出现 ghost + placeholder）
+                    fromIndex: -1,
+                    placeholderIndex: null,
+                    mouseOffsetX: 0,
+                    mouseOffsetY: 0,
+                    startX: 0,            // 起点坐标（mouse/touch 通用）
+                    startY: 0,
+                    dragTotalDx: 0,       // 累计像素位移
+                    dragTotalDy: 0,
+                    chipWidth: 0,
+                    chipHeight: 0,
+                    outOfBounds: false,
+                    mode: null            // 'mouse' | 'touch'
+                },
+                _dragMoveHandler: null,
+                _dragUpHandler: null,
+                _ghostEl: null,
+                // 移动端长按启动拖拽的定时器
+                _touchLongPressTimer: null,
+                TOUCH_LONG_PRESS_MS: 200,
+                // 移动端：长按到点后切为 true，配合 CSS class 切换 touch-action:none
+                _touchDragActive: false,
+                _touchArming: null,
+                // 全局滚动冻结（拖拽时禁止页面/外层滚动）
+                _freezeScrollY: 0,
+                _freezeScrollX: 0,
+                // 边缘自动滚动（当 ghost 接触到脚本板上/下边缘时触发）
+                _edgeAutoScrollTimer: null,
+                _edgeAutoScrollSpeed: 1.2    // 每 16ms 步长（像素，≈75px/sec 缓慢滚动）
             }
         },
         mounted () {
@@ -171,7 +971,21 @@
                     e.preventDefault();
                     this.save_code();
                 }
+                // Esc 取消正在进行的拖拽
+                if (e.key === 'Escape' && this.dragState.dragging) {
+                    this.endDrag(true);
+                }
             });
+        },
+        beforeUnmount() {
+            this.endDrag(true);
+            this._stopEdgeAutoScroll();
+            this._unfreezeGlobalScroll();
+            if (this._touchLongPressTimer) {
+                clearTimeout(this._touchLongPressTimer);
+                this._touchLongPressTimer = null;
+            }
+            this._cancelTouchLongPress();
         },
         watch:{
             script_name:function(newval,oldval){
@@ -181,6 +995,576 @@
             }
         },
         methods: {
+            // ========== 显隐判断（保留原 v1 的条件） ==========
+            needKeywordRow() {
+                const s = this.script_cffs;
+                return s !== '框架初始化' && s !== '脚本错误' && s !== '群成员增加' && s !== '内容过滤' && s !== '' && !!s;
+            },
+            needMatchRow() {
+                const s = this.script_cffs;
+                return s === '群聊触发' || s === '私聊触发' || s === '群、私聊触发' || s === '网络触发' || s === '延迟触发';
+            },
+
+            // ========== 选中（单击） ==========
+            selectChip(index) {
+                // 如果是刚结束的拖拽且有移动，不触发点击切换
+                if (this._lastDragWasMove) {
+                    this._lastDragWasMove = false;
+                    return;
+                }
+                // 移动端：touchEnd 已兜底切换，随后浏览器可能再派发一次原生 click；
+                // 用 _pendingTapIndex 去重，防止同一次 tap 切换两次
+                if (this._pendingTapIndex != null) {
+                    if (this._pendingTapIndex === index) {
+                        this._pendingTapIndex = null;
+                        return;
+                    } else {
+                        this._pendingTapIndex = null;
+                    }
+                }
+                this.select_name_change(index);
+            },
+
+            // ========== 占位符样式（尽量匹配原 chip 的宽度） ==========
+            placeholderStyle(index) {
+                const w = this.dragState.chipWidth ? (this.dragState.chipWidth + 'px') : 'auto';
+                // 当 index 未传或空数组时，给一个默认宽度
+                if (this.pkg_codes.length === 0) return { width: '8em' };
+                // 当存在参考 chip 时，用它的尺寸
+                return { width: w };
+            },
+
+            // ========== 开始拖拽（鼠标按下） ==========
+            chipMouseDown(e, index) {
+                if (e.button !== 0) return; // 仅左键
+                this._startDragCommon(e, index, 'mouse');
+                // 绑定全局鼠标事件
+                this._dragMoveHandler = (ev) => this.onDragMove(ev);
+                this._dragUpHandler = (ev) => this.onDragUp(ev);
+                document.addEventListener('mousemove', this._dragMoveHandler, true);
+                document.addEventListener('mouseup', this._dragUpHandler, true);
+                e.preventDefault();
+            },
+
+            // ---------- 移动端：触摸开始 ----------
+            chipTouchStart(e, index) {
+                const t = e.touches && e.touches[0];
+                if (!t) return;
+                // 注意：touchstart 不调用 preventDefault，避免把 tap 的原生 click 也吞掉；
+                // 防长按选字/弹出菜单由 CSS touch-action + -webkit-touch-callout + user-select 兜底。
+
+                // ---- 长按 0.3s 才允许启动拖拽 ----
+                // 先记录起始信息（不直接进入 dragging 状态），到点后才真正激活
+                const startInfo = {
+                    startX: t.clientX,
+                    startY: t.clientY,
+                    index,
+                    currentTarget: e.currentTarget,
+                    arming: true   // 长按阶段：尚未决定是否要拖拽
+                };
+                this._touchArming = startInfo;
+                // 清掉上次的定时器，保证一次按下一个定时器
+                if (this._touchLongPressTimer) {
+                    clearTimeout(this._touchLongPressTimer);
+                    this._touchLongPressTimer = null;
+                }
+                this._touchLongPressTimer = setTimeout(() => {
+                    const s = this._touchArming;
+                    if (!s || !s.arming) return;
+                    // 300ms 到点：还在 arming 且手指未离开 → 真正进入拖拽状态
+                    s.arming = false;
+                    // 关键：到点瞬间给整个脚本板加 touch-drag-active 类，切为 touch-action:none，
+                    // 这样后续手指移动才能被 JS 完全掌控（否则 已默认的滚动手势 会先于 JS 吞掉事件）
+                    const board = document.querySelector('.script-board');
+                    if (board) board.classList.add('touch-drag-active');
+                    this._touchDragActive = true;
+                    this._startDragCommon({ clientX: s.startX, clientY: s.startY, currentTarget: s.currentTarget }, s.index, 'touch');
+                }, this.TOUCH_LONG_PRESS_MS);
+            },
+            chipTouchMove(e, index) {
+                // 阶段 A：仍在长按 arming（未到 300ms）→ 有任何移动=用户想上下滑动列表，立刻取消拖拽
+                const s = this._touchArming;
+                if (s && s.arming) {
+                    const t = e.touches && e.touches[0];
+                    if (!t) return;
+                    const dx = t.clientX - s.startX;
+                    const dy = t.clientY - s.startY;
+                    // 超过 4px 认定为真实滚动意图（>阈值内允许极轻微抖动不触发取消）
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) > 4) {
+                        this._cancelTouchLongPress();
+                        return;
+                    }
+                    return;
+                }
+                // 阶段 B：已经进入拖拽状态 → 走原逻辑
+                if (!this.dragState.dragging) return;
+                const t2 = e.touches && e.touches[0];
+                if (!t2) return;
+                // started=true 之后才 preventDefault 防止页面滚动把 chip 拉走
+                if (this.dragState.started && e.cancelable) e.preventDefault();
+                this.onDragMove({ clientX: t2.clientX, clientY: t2.clientY });
+            },
+            chipTouchEnd(e, index) {
+                // arming 阶段清理定时器，并按是否已真实进入 dragging 分支处理
+                const armingBefore = !!(this._touchArming && this._touchArming.arming);
+                if (this._touchArming) {
+                    this._cancelTouchLongPress();
+                    if (!this.dragState.dragging) {
+                        // 未进入 dragging：说明是 <300ms 的快速点击（tap）
+                        // 直接手动兜底 selectChip（防部分 WebView 不派发 click）
+                        this._pendingTapIndex = index;
+                        setTimeout(() => {
+                            if (this._pendingTapIndex === index &&
+                                index >= 0 && index < this.pkg_codes.length &&
+                                !this.dragState.dragging) {
+                                this._pendingTapIndex = null;
+                                this.selectChip(index);
+                            }
+                        }, 0);
+                        return;
+                    }
+                }
+
+                if (!this.dragState.dragging) return;
+                const changed = e.changedTouches && e.changedTouches[0];
+                const clientX = changed ? changed.clientX : (this.dragState.startX + this.dragState.dragTotalDx);
+                const clientY = changed ? changed.clientY : (this.dragState.startY + this.dragState.dragTotalDy);
+
+                const wasStarted = this.dragState.started;
+                const fromIndex = this.dragState.fromIndex;
+
+                this.onDragUp({ clientX, clientY });
+
+                // 若长按已到点但未超过 3px 位移阈值（started=false）→ 视为点击
+                if (!wasStarted && armingBefore === false && !this._touchArming /* cleaned */) {
+                    this._pendingTapIndex = fromIndex;
+                    setTimeout(() => {
+                        if (this._pendingTapIndex === fromIndex &&
+                            fromIndex >= 0 && fromIndex < this.pkg_codes.length &&
+                            !this.dragState.dragging) {
+                            this._pendingTapIndex = null;
+                            this.selectChip(fromIndex);
+                        }
+                    }, 0);
+                }
+            },
+
+            // ---------- 取消长按拖拽（手指移动、离开、组件销毁） ----------
+            _cancelTouchLongPress() {
+                if (this._touchLongPressTimer) {
+                    clearTimeout(this._touchLongPressTimer);
+                    this._touchLongPressTimer = null;
+                }
+                if (this._touchArming) {
+                    this._touchArming.arming = false;
+                    this._touchArming = null;
+                }
+                this._clearTouchDragClass();
+            },
+
+            _clearTouchDragClass() {
+                if (this._touchDragActive) {
+                    const board = document.querySelector('.script-board');
+                    if (board) board.classList.remove('touch-drag-active');
+                    this._touchDragActive = false;
+                }
+            },
+
+            // ---------- 拖拽中冻结全局滚动（防止外层滚动条上下跟着手指走） ----------
+            _freezeGlobalScroll() {
+                if (this._freezeScrollY != null && document.body.classList.contains('drag-freeze-scroll')) return;
+                this._freezeScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
+                this._freezeScrollX = window.scrollX || window.pageXOffset || document.documentElement.scrollLeft || 0;
+                // 用负 margin-top 把 body 视觉上拉回当前滚动位置（避免 position:fixed 后跳回顶部）
+                document.documentElement.style.setProperty('--freeze-scroll-top', (-this._freezeScrollY) + 'px');
+                document.documentElement.classList.add('drag-freeze-scroll-html');
+                document.body.classList.add('drag-freeze-scroll');
+                // 同时锁定脚本板内层原生滚动：只有边缘 auto-scroll 定时器能改 scrollTop
+                // （避免触摸/鼠标在板内上下拖动时，内层还被滚动手势偷偷带动）
+                const inner = document.querySelector('.script-board-inner');
+                if (inner) {
+                    this._savedInnerOverflowY = inner.style.overflowY;
+                    inner.classList.add('drag-freeze-inner');
+                }
+            },
+            _unfreezeGlobalScroll() {
+                if (document.body.classList.contains('drag-freeze-scroll')) {
+                    const y = this._freezeScrollY || 0;
+                    const x = this._freezeScrollX || 0;
+                    document.body.classList.remove('drag-freeze-scroll');
+                    document.documentElement.classList.remove('drag-freeze-scroll-html');
+                    document.documentElement.style.removeProperty('--freeze-scroll-top');
+                    requestAnimationFrame(() => {
+                        if ('scrollTo' in window) window.scrollTo(x, y);
+                        else {
+                            window.scrollTop = y;
+                            window.scrollLeft = x;
+                        }
+                    });
+                    this._freezeScrollY = 0;
+                    this._freezeScrollX = 0;
+                }
+                const inner = document.querySelector('.script-board-inner');
+                if (inner) inner.classList.remove('drag-freeze-inner');
+            },
+
+            // ---------- 边缘自动滚动（接触脚本板上/下边缘时，缓慢滚动内层） ----------
+            _startEdgeAutoScroll() {
+                if (this._edgeAutoScrollTimer) return;
+                this._edgeAutoScrollTimer = setInterval(() => this._tickEdgeAutoScroll(), 16);
+            },
+            _stopEdgeAutoScroll() {
+                if (this._edgeAutoScrollTimer) {
+                    clearInterval(this._edgeAutoScrollTimer);
+                    this._edgeAutoScrollTimer = null;
+                }
+            },
+            _tickEdgeAutoScroll() {
+                const inner = document.querySelector('.script-board-inner');
+                if (!inner) return this._stopEdgeAutoScroll();
+                const rect = inner.getBoundingClientRect();
+                const pt = this.dragState._lastPointer;   // 最近一次指针坐标（clientX/clientY）
+                if (!pt) return;
+
+                // 触发范围（像素）：
+                //   * 指针在可视板内：距顶端/底端 ≤ EDGE_INSIDE(=24) 像素时，慢速滚
+                //   * 指针超出可视板上/下边界（越界）：立刻继续滚，并且越远越快
+                //   * 左/右越界：不影响（不滚）
+                const EDGE_INSIDE = 24;
+                const MAX_SPEED = 10;     // 越界距离极大时的封顶速度 px/frame
+                const BASE_SPEED = 1.2;   // 板内边缘的基础慢速
+                const SENS = 0.10;        // 越界每 10px 加速 1 px/frame 的线性系数
+
+                let step = 0;             // 正值：向下滚；负值：向上滚
+
+                if (pt.clientY < rect.top) {
+                    // 指针越上界：距离越大滚越快（线性+封顶）
+                    const dist = rect.top - pt.clientY;
+                    step = -(BASE_SPEED + Math.min(MAX_SPEED, dist * SENS));
+                } else if (pt.clientY > rect.bottom) {
+                    // 指针越下界
+                    const dist = pt.clientY - rect.bottom;
+                    step = BASE_SPEED + Math.min(MAX_SPEED, dist * SENS);
+                } else {
+                    // 板内：顶部 EDGE_INSIDE 条带 或 底部 EDGE_INSIDE 条带 才慢速
+                    if (pt.clientY < rect.top + EDGE_INSIDE) {
+                        step = -BASE_SPEED;
+                    } else if (pt.clientY > rect.bottom - EDGE_INSIDE) {
+                        step = BASE_SPEED;
+                    }
+                }
+
+                if (step !== 0) {
+                    const before = inner.scrollTop;
+                    inner.scrollTop += step;
+                    // 若真的发生了滚动，重新计算占位符位置（芯片的相对位置/行结构变了）
+                    if (inner.scrollTop !== before && this.dragState.dragging) {
+                        this._recomputePlaceholderByPointer();
+                    }
+                }
+            },
+            _recomputePlaceholderByPointer() {
+                const pt = this.dragState._lastPointer;
+                if (pt) this._updatePlaceholder(pt.clientX, pt.clientY);
+            },
+
+            // ---------- 公共：拖拽初始化（鼠标/触摸通用） ----------
+            _startDragCommon(ev, index, mode) {
+                const el = ev.currentTarget || this._findChipEl(index);
+                const rect = el.getBoundingClientRect();
+                this.dragState.dragging = true;
+                this.dragState.started = false;
+                this.dragState.fromIndex = index;
+                this.dragState.placeholderIndex = null;
+                this.dragState.startX = ev.clientX;
+                this.dragState.startY = ev.clientY;
+                this.dragState.dragTotalDx = 0;
+                this.dragState.dragTotalDy = 0;
+                this.dragState.mouseOffsetX = ev.clientX - rect.left;
+                this.dragState.mouseOffsetY = ev.clientY - rect.top;
+                this.dragState.chipWidth = rect.width;
+                this.dragState.chipHeight = rect.height;
+                this.dragState.outOfBounds = false;
+                this.dragState.mode = mode;    // 'mouse' | 'touch'
+                this._dragSourceEl = el;
+            },
+            _findChipEl(index) {
+                const inner = this.$refs.boardInner;
+                if (!inner) return null;
+                return inner.querySelector('.script-chip[data-idx="' + index + '"]');
+            },
+
+            // ========== 鼠标移动：先判定阈值 → 超过后进入拖拽 UI ==========
+            onDragMove(e) {
+                if (!this.dragState.dragging) return;
+
+                // 记录最近一次指针坐标（供边缘自动滚动 tick 读取）
+                this.dragState._lastPointer = { clientX: e.clientX, clientY: e.clientY };
+
+                const threshold = 3; // 像素阈值（忽略轻微抖动）
+                const dx = e.clientX - this.dragState.startX;
+                const dy = e.clientY - this.dragState.startY;
+                this.dragState.dragTotalDx = dx;
+                this.dragState.dragTotalDy = dy;
+                const distance = Math.max(Math.abs(dx), Math.abs(dy));
+
+                if (!this.dragState.started) {
+                    if (distance < threshold) {
+                        return; // 低于阈值：完全忽略（无 ghost、无 placeholder、无变灰）
+                    }
+                    // ---- 达到阈值，正式启动拖拽视觉 ----
+                    this.dragState.started = true;
+                    // 冻结全局滚动：防止外层滚动条跟着手指/鼠标走
+                    this._freezeGlobalScroll();
+                    // 启动边缘自动滚动（当 ghost 接触到脚本板边缘才会真正滚）
+                    this._startEdgeAutoScroll();
+                    // PC 鼠标模式：全局显示抓手图标
+                    if (this.dragState.mode !== 'touch' && document.body && document.body.classList) {
+                        document.body.classList.add('is-dragging');
+                    }
+                    // 生成 ghost
+                    if (this._dragSourceEl) {
+                        const rect = this._dragSourceEl.getBoundingClientRect();
+                        const ghost = this._dragSourceEl.cloneNode(true);
+                        ghost.classList.add('ghost');
+                        ghost.classList.remove('active');
+                        ghost.style.width = rect.width + 'px';
+                        ghost.style.height = rect.height + 'px';
+                        ghost.style.left = (e.clientX - this.dragState.mouseOffsetX) + 'px';
+                        ghost.style.top = (e.clientY - this.dragState.mouseOffsetY) + 'px';
+                        document.body.appendChild(ghost);
+                        this._ghostEl = ghost;
+                    }
+                }
+
+                // ---------- 以下为"正式拖拽中"逻辑 ----------
+
+                // 更新幽灵（fixed 坐标）
+                if (this._ghostEl) {
+                    this._ghostEl.style.left = (e.clientX - this.dragState.mouseOffsetX) + 'px';
+                    this._ghostEl.style.top = (e.clientY - this.dragState.mouseOffsetY) + 'px';
+                }
+
+                this._updatePlaceholder(e.clientX, e.clientY);
+            },
+
+            // 计算插入占位符（抽取为单独函数，便于边缘 auto-scroll 每帧滚动后重新计算）
+            // 注意：这里不负责"越界=取消"的最终判定；最终是否取消只在 onDragUp 释放时按 outOfBounds 决定
+            _updatePlaceholder(cx, cy) {
+                const board = this.$refs.board;
+                const boardInner = this.$refs.boardInner;
+                if (!board || !boardInner) return;
+
+                const margin = 4;
+                const boardRect = board.getBoundingClientRect();
+                // 左右越界：取消占位符（但仍保留边缘滚动）；上下越界不取消，继续保留占位符并由 edge-scroll 决定滚动
+                const horizontalOutside =
+                    cx < boardRect.left - margin ||
+                    cx > boardRect.right + margin;
+                if (horizontalOutside) {
+                    this.dragState.outOfBounds = true;
+                    this.dragState.placeholderIndex = null;
+                    return;
+                }
+                // 上下越界：不立即清空 placeholder，让它保持在首行之前 / 末行之后
+                // 仅把 outOfBounds 标出来，供 onDragUp 释放时作为"是否取消重排"的判据
+                const verticalOutside =
+                    cy < boardRect.top - margin ||
+                    cy > boardRect.bottom + margin;
+                this.dragState.outOfBounds = verticalOutside;  // false 则由后续 drop 判定
+
+                // ========== 收集当前所有 chip 的矩形（跳过正在拖拽的源 chip） ==========
+                const chips = Array.from(boardInner.querySelectorAll('.script-chip'));
+                const rects = chips.map(c => {
+                    const r = c.getBoundingClientRect();
+                    const dataIdx = Number(c.getAttribute('data-idx'));
+                    return { el: c, rect: r, idx: isNaN(dataIdx) ? -1 : dataIdx };
+                }).filter(r => r.idx !== -1);
+                const fromIdx = this.dragState.fromIndex;
+                const otherRects = rects.filter(r => r.idx !== fromIdx);
+                let targetIdx = null;
+                if (otherRects.length === 0) {
+                    targetIdx = 0;
+                } else {
+                    // 按 y 聚类成行（y 差 <10px）
+                    const rows = [];
+                    otherRects.forEach(r => {
+                        const ry = r.rect.top;
+                        let placed = false;
+                        for (const row of rows) {
+                            if (Math.abs(row.y - ry) < 10) {
+                                row.items.push(r);
+                                placed = true;
+                                break;
+                            }
+                        }
+                        if (!placed) rows.push({ y: ry, items: [r] });
+                    });
+                    rows.sort((a, b) => a.y - b.y);
+                    rows.forEach(row => row.items.sort((a, b) => a.rect.left - b.rect.left));
+
+                    let targetRow = null;
+                    let targetRowIndex = -1;
+                    for (let i = 0; i < rows.length; i++) {
+                        const row = rows[i];
+                        const rowTop = Math.min(...row.items.map(it => it.rect.top));
+                        const rowBottom = Math.max(...row.items.map(it => it.rect.bottom));
+                        if (cy <= rowBottom) {
+                            targetRow = row;
+                            targetRowIndex = i;
+                            break;
+                        }
+                    }
+                    if (targetRow == null && rows.length > 0) {
+                        targetRow = rows[rows.length - 1];
+                        targetRowIndex = rows.length - 1;
+                    }
+
+                    if (!targetRow) {
+                        targetIdx = 0;
+                    } else {
+                        // 若指针远高于第一行 → 插在最前
+                        const firstRow = rows[0];
+                        const firstRowTop = Math.min(...firstRow.items.map(it => it.rect.top));
+                        if (cy < firstRowTop) {
+                            targetIdx = firstRow.items[0].idx;
+                        } else {
+                            const rowItems = targetRow.items;
+                            // 指针在当前 row 顶部上方（上越界但刚进入 row 判定范围）
+                            const rowTop = Math.min(...rowItems.map(it => it.rect.top));
+                            if (cy < rowTop - 2 && targetRowIndex === 0) {
+                                targetIdx = rowItems[0].idx;
+                            } else {
+                                let insertBeforeChip = null;
+                                for (const it of rowItems) {
+                                    const midX = (it.rect.left + it.rect.right) / 2;
+                                    if (cx < midX) {
+                                        insertBeforeChip = it;
+                                        break;
+                                    }
+                                }
+                                if (insertBeforeChip) {
+                                    targetIdx = insertBeforeChip.idx;
+                                } else {
+                                    if (targetRowIndex < rows.length - 1) {
+                                        const nextRow = rows[targetRowIndex + 1];
+                                        targetIdx = nextRow.items[0].idx;
+                                    } else {
+                                        targetIdx = this.pkg_codes.length;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                this.dragState.placeholderIndex = targetIdx;
+            },
+
+            // ========== 鼠标抬起：提交或取消 ==========
+            onDragUp(e) {
+                if (!this.dragState.dragging) return;
+                const reallyStarted = this.dragState.started;
+                // 最终释放位置的越界判定（必须在框内才提交）
+                let releaseOutOfBounds = !!this.dragState.outOfBounds;
+                const board = this.$refs.board;
+                if (board && reallyStarted && typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+                    const rect = board.getBoundingClientRect();
+                    const margin = 4;
+                    const outside =
+                        e.clientX < rect.left - margin ||
+                        e.clientX > rect.right + margin ||
+                        e.clientY < rect.top - margin ||
+                        e.clientY > rect.bottom + margin;
+                    if (outside) releaseOutOfBounds = true;
+                }
+                // 只有真正启动过拖拽才算"已移动"（否则视为一次普通点击，selectChip 会触发切换）
+                this._lastDragWasMove = reallyStarted;
+                this.endDrag(false, reallyStarted && !releaseOutOfBounds);
+            },
+
+            endDrag(cancelOnly, commit) {
+                if (!this.dragState.dragging) return;
+
+                const from = this.dragState.fromIndex;
+                const to = this.dragState.placeholderIndex;
+                const reallyStarted = this.dragState.started;
+
+                // 移除幽灵与事件
+                if (this._ghostEl && this._ghostEl.parentNode) {
+                    this._ghostEl.parentNode.removeChild(this._ghostEl);
+                }
+                this._ghostEl = null;
+                this._dragSourceEl = null;
+                if (this._dragMoveHandler) {
+                    document.removeEventListener('mousemove', this._dragMoveHandler, true);
+                    this._dragMoveHandler = null;
+                }
+                if (this._dragUpHandler) {
+                    document.removeEventListener('mouseup', this._dragUpHandler, true);
+                    this._dragUpHandler = null;
+                }
+
+                // 无论如何都移除 body 的抓手 cursor 标识
+                if (document.body && document.body.classList && document.body.classList.contains('is-dragging')) {
+                    document.body.classList.remove('is-dragging');
+                }
+                // 停止边缘自动滚动
+                this._stopEdgeAutoScroll();
+                // 释放全局滚动冻结，并恢复原滚动位置
+                this._unfreezeGlobalScroll();
+                // 移除移动端拖动态的 touch-action:none 切回类
+                this._clearTouchDragClass();
+
+                // 提交重排（仅当真正启动拖拽且未越界）
+                if (commit === true && reallyStarted && !this.dragState.outOfBounds && from !== -1 && to !== null) {
+                    let insertAt = to;
+                    if (typeof insertAt === 'number' && insertAt > from) {
+                        insertAt -= 1;
+                    }
+                    if (insertAt !== from && insertAt >= 0 && insertAt <= this.pkg_codes.length) {
+                        this.moveChip(from, insertAt);
+                    }
+                }
+
+                // 重置状态
+                this.dragState = {
+                    dragging: false,
+                    started: false,
+                    fromIndex: -1,
+                    placeholderIndex: null,
+                    mouseOffsetX: 0,
+                    mouseOffsetY: 0,
+                    startX: 0,
+                    startY: 0,
+                    dragTotalDx: 0,
+                    dragTotalDy: 0,
+                    chipWidth: 0,
+                    chipHeight: 0,
+                    outOfBounds: false,
+                    mode: null
+                };
+            },
+
+            // ========== 实际重排数组，并同步 select_index ==========
+            moveChip(from, to) {
+                if (from === to) return;
+                if (from < 0 || from >= this.pkg_codes.length) return;
+                if (to < 0 || to > this.pkg_codes.length) return;
+                const item = this.pkg_codes.splice(from, 1)[0];
+                this.pkg_codes.splice(to, 0, item);
+
+                // 更新选中索引
+                if (this.select_index === from) {
+                    this.select_index = to;
+                } else if (from < this.select_index && to >= this.select_index) {
+                    this.select_index -= 1;
+                } else if (from > this.select_index && to <= this.select_index) {
+                    this.select_index += 1;
+                }
+            },
+
+            // ========== 以下保留 v1 原始业务方法 ==========
             allowDrop(e) { e.preventDefault(); },
             dragStart(e, index) {
                 e.dataTransfer.setData('Text', index);
@@ -323,26 +1707,9 @@
         }
     })
     
-        // 动态注册 CustomEditor 组件
-        const options = {
-            moduleCache: {
-                vue: Vue
-            },
-            getFile(url) {
-                return fetch(url).then(res => res.ok ? res.text() : Promise.reject(res));
-            },
-            addStyle(textContent) {
-                const style = document.createElement('style');
-                style.textContent = textContent;
-                document.head.appendChild(style);
-            },
-        };
-        window['vue3-sfc-loader'].loadModule('./custom_editor.vue', options).then(CustomEditor => {
-            app.component('CustomEditor', CustomEditor.default || CustomEditor);
-            app.mount('#app');
-        });
+    app.component('CustomEditor', CustomEditor);
+    app.mount('#app')
    </script>
-   <script src="theme.js"></script>
    
 </body>
 

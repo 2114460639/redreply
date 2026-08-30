@@ -4,74 +4,258 @@
 <head>
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-   <title>红色问答调试</title>
-   <link href='theme.css' rel='stylesheet' type='text/css'/>
+   <title>孤零零の调试台</title>
    <style>
-    * { box-sizing: border-box; }
     html,body{
         width: 100%;
         height: 100%;
         display: flex;
         margin: 0;
         padding: 0;
+        overflow-x: hidden;
+        box-sizing: border-box;
     }
+    button{border-radius:14px;}
+    input{border-radius:6px;}
     button,textarea,body,select,input{
-        background-color: #e1ebe7;
+        background-color: #C7EDCC;
         font-family: fusion-pixel-12px-monospaced-zh_hant, serif;
     }
-    button:hover {
-        background-color: aqua;
-        color: red;
+    * {
+        box-sizing: border-box;
+        max-width: 100%;
+    }
+    /* 图片全屏显示样式 */
+    .fullscreen-image {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    .fullscreen-image img {
+        max-width: 90%;
+        max-height: 90%;
+        object-fit: contain;
+    }
+    .close-button {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background-color: white;
+        border: none;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
         cursor: pointer;
     }
+    /* PC端布局 */
+    @media (min-width: 769px) {
+        .input-group-pc {
+            display: flex;
+            flex-wrap: nowrap;
+            flex-basis: auto;
+            align-items: center;
+            width: 98%;
+            margin-bottom: 10px;
+        }
+        .input-group-mobile {
+            display: none;
+        }
+        .result-container {
+            display: flex;
+            border-radius: 4px;
+            flex: 1 0 auto;
+            height: 0;
+            flex-direction: row;
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+        .result-textarea {
+            flex-grow: 1;
+            min-width: 70%;
+            max-width: 70%;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        .image-container {
+            width: 0;
+            flex-grow: 1;
+            aspect-ratio: 16/9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .image-button {
+            display: none;
+        }
+    }
+    /* 移动端布局 */
+    @media (max-width: 768px) {
+        .input-group-pc {
+            display: none;
+        }
+        .input-group-mobile {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .input-row {
+            display: flex;
+            margin-bottom: 2.5px;
+            width: 100%;
+        }
+        .input-label {
+            text-align: right;
+            padding-right: 10px;
+        }
+        .input-field {
+            text-align: center;
+        }
+        .result-container {
+            display: flex;
+            border-radius: 15px;
+            flex: 1 0 auto;
+            height: 0;
+            flex-direction: column;
+            max-width: 100%;
+            overflow-x: hidden;
+            margin-top: 5px;
+        }
+        .result-textarea {
+            flex-grow: 1;
+            min-width: 100%;
+            max-width: 100%;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border-radius: 15px;
+        }
+        .image-container {
+            display: none;
+        }
+        .image-button {
+            margin-top: 10px;
+            width: 100%;
+            height: 40px;
+        }
+        #app {
+            padding: 10px !important;
+            margin: 5px !important;
+            flex-shrink: 0;
+            max-width: 97% !important;
+        }
+        .ql-editor {
+            font-size: 14px !important;
+        }
+        button {
+            font-size: 14px !important;
+            height: 40px !important;
+        }
+        textarea {
+            font-size: 14px !important;
+        }
+    }
    </style>
-   <link rel="stylesheet" href="./custom_editor.css">
-   <script src="fetch-utils.js"></script>
+   <script src="axios.js"></script>
    <script src="vue.js"></script>
-   <script src="vue3-sfc-loader.min.js"></script>
+   <script src="vue-quill.js"></script>
+   <link rel="stylesheet" href="vue-quill.snow.prod.css">
 </head>
 
 <body>
    
-   <div id="app" style="border: 1px solid;display: flex;flex-direction: column;flex: 0 1 100%;overflow-x: auto;margin: 0.4em;">
-        <h1 style="text-align: center;color: red;">红色问答调试</h1>
-        <!-- START OF MODIFIED BLOCK -->
-        <div style="display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 8px; margin-bottom: 4px; padding: 0 0.5em;">
-    <!-- 改动: 移除了 span 上的 justify-self: end; 样式，使其恢复默认左对齐 -->
-    <span>平台:</span>
-    <input v-model="platform" @input="change_platform">
-
-    <span>机器人ID:</span>
-    <input v-model="bot_id" @input="change_bot_id">
-
-    <span>群组ID:</span>
-    <input v-model="groups_id" @input="change_groups_id">
-
-    <span>群ID:</span>
-    <input v-model="group_id" @input="change_group_id">
-
-    <span>用户ID:</span>
-    <input v-model="user_id" @input="change_user_id">
-
-    <span>包名(为空表示默认包):</span>
-    <input v-model="pkg_name" @input="change_pkg_name">
-</div>
-        <!-- END OF MODIFIED BLOCK -->
-        <div style="flex: 1 0 auto;height: 0;width: 100%; display: flex; flex-direction: column;">
-
-            <custom-editor ref="child" @input-change="save_script"></custom-editor>
-
-            <div style="display: flex;flex: 1 0 auto;height: 50%;flex-direction: row;overflow: auto; border-top: 1px solid;">
-                <textarea style="flex-grow: 1;min-width: 50%; border: none; outline: none;" disabled>{{result}}</textarea>
-                <div v-if="has_img" style="overflow: auto;width: 0;flex-grow: 1; padding: 5px; border-left: 1px solid #ccc;">
-                    <!-- 次要改动: 修正了 img 标签的样式写法，并增加了宽度和边框 -->
-                    <img v-bind:src="img_src" style="max-width: 100%; object-fit: scale-down;">
+   <div id="app" style="padding:0.5em;border-radius:10px;border:1px solid;margin:0.2em;display:flex;flex-direction:column;flex-grow:1;max-width: 97%;width: 97%;box-sizing: border-box;">
+        <!-- PC端输入组 -->
+        <div class="input-group-pc">
+            <span style="width:5%;text-align:right;margin-right:5px;">平台:</span>
+            <input style="width:12%;" v-model = "platform" @input="change_platform"></input>
+            <span style="width:7%;text-align:right;margin-right:5px;">机器人ID:</span>
+            <input style="width:12%;" v-model = "bot_id" @input="change_bot_id"></input>
+            <span style="width:5%;text-align:right;margin-right:5px;">群组ID:</span>
+            <input style="width:12%;" v-model = "groups_id" @input="change_groups_id"></input>
+            <span style="width:4%;text-align:right;margin-right:5px;">群ID:</span>
+            <input style="width:12%;" v-model = "group_id" @input="change_group_id"></input>
+            <span style="width:7%;text-align:right;margin-right:5px;">发送者ID:</span>
+            <input style="width:12%;" v-model = "user_id" @input="change_user_id"></input>
+            <span style="width:4%;text-align:right;margin-right:5px;">包名:</span>
+            <input style="width:12%;" v-model = "pkg_name" @input="change_pkg_name"></input>
+        </div>
+        
+        <!-- 移动端输入组 -->
+        <div class="input-group-mobile">
+            <div class="input-row">
+                <div style="width: 15%; text-align: right; padding-right: 10px;">
+                    <span style="font-size: 14px;">包名:</span>
+                </div>
+                <div style="width: 30%;">
+                    <input style="width: 100%; height: 25px; font-size: 14px; text-align: center;" v-model = "pkg_name" @input="change_pkg_name"></input>
+                </div>
+                <div style="width: 25%; text-align: right; padding-right: 10px;">
+                    <span style="font-size: 14px;">机器人ID:</span>
+                </div>
+                <div style="width: 30%;">
+                    <input style="width: 100%; height: 25px; font-size: 14px; text-align: center;" v-model = "bot_id" @input="change_bot_id"></input>
+                </div>
+            </div>
+            <div class="input-row">
+                <div style="width: 15%; text-align: right; padding-right: 10px;">
+                    <span style="font-size: 14px;">平台:</span>
+                </div>
+                <div style="width: 30%;">
+                    <input style="width: 100%; height: 25px; font-size: 14px; text-align: center;" v-model = "platform" @input="change_platform"></input>
+                </div>
+                <div style="width: 25%; text-align: right; padding-right: 10px;">
+                    <span style="font-size: 14px;">发送者ID:</span>
+                </div>
+                <div style="width: 30%;">
+                    <input style="width: 100%; height: 25px; font-size: 14px; text-align: center;" v-model = "user_id" @input="change_user_id"></input>
+                </div>
+            </div>
+            <div class="input-row">
+                <div style="width: 15%; text-align: right; padding-right: 10px;">
+                    <span style="font-size: 14px;">群ID:</span>
+                </div>
+                <div style="width: 30%;">
+                    <input style="width: 100%; height: 25px; font-size: 14px; text-align: center;" v-model = "group_id" @input="change_group_id"></input>
+                </div>
+                <div style="width: 25%; text-align: right; padding-right: 10px;">
+                    <span style="font-size: 14px;">群组ID:</span>
+                </div>
+                <div style="width: 30%;">
+                    <input style="width: 100%; height: 25px; font-size: 14px; text-align: center;" v-model = "groups_id" @input="change_groups_id"></input>
                 </div>
             </div>
         </div>
-        <div style="display: flex;flex: 0 0 auto;">
-            <button style="height: 40px;font-size: medium;font-weight: bold;flex: 1 0 auto;" @click="run_script()">发送到平台</button>
-            <button style="height: 40px;font-size: medium;font-weight: bold;flex: 1 0 auto;" @click="run_script2()">直接运行</button>
+        
+        <div style="height: 70%;border-radius:15px; flex-grow: 1;display: flex;flex-direction: column;flex-grow: 1;max-width: 100%;overflow-x: hidden;">
+            <quill-editor id = "script_content"  ref="child" theme="snow" spellcheck = false style="flex-grow: 1; border-radius:15px;height: 0;max-width: 100%;overflow-x: hidden;"></quill-editor>
+	<div style="height:35px;">
+            <button style="height: 35px;width:50%;font-size: medium;font-weight: bold;" @click="run_script()">发送到平台</button>
+            <button style="height: 35px;width:50%;font-size: medium;font-weight: bold;" @click="run_script2()">直接运行</button>
+	</div>
+	<div class="result-container">
+            <textarea class="result-textarea" disabled>{{result}}</textarea>
+            <div v-if="has_img" class="image-container">
+                <img v-bind:src="img_src" style="max-width: 100%;max-height: 100%;object-fit: contain;"></img>
+            </div>
+            <button v-if="has_img" class="image-button" @click="showFullscreenImage()">查看图片</button>
+        </div>
+        
+        <!-- 全屏图片显示 -->
+        <div v-if="showFullscreen" class="fullscreen-image" @click="closeFullscreenImage()">
+            <img v-bind:src="img_src" style="max-width: 90%;max-height: 90%;object-fit: contain;">
+            <button class="close-button" @click.stop="closeFullscreenImage()">×</button>
+        </div>
+        
         </div>
    </div>
    <script>
@@ -81,14 +265,18 @@
             return {
                 // 用于显示
                 platform:"onebot11",
-                bot_id:"1736293901",
-                groups_id:"556515826",
-                group_id:"556515826",
-                pkg_name:"",
+                bot_id:"647233887",
+                groups_id:"暂不支持",
+                group_id:"439913126",
                 user_id:"",
+                pkg_name:"",
                 result:"",
                 img_src:"",
                 has_img:false,
+                showFullscreen:false,
+                last_code:"",
+                last_change_time:(new Date()).valueOf(),
+                last_index:0,
             }
         },
         mounted () {
@@ -103,25 +291,25 @@
             if (bot_id_t) {
                 this.bot_id = bot_id_t
             }else {
-                this.bot_id = "1736293901"
+                this.bot_id = "647233887"
             }
             let groups_id_t = window.localStorage.getItem('debug_groups_id');
             if (groups_id_t) {
                 this.groups_id = groups_id_t
             }else {
-                this.groups_id = ""
+                this.groups_id = "暂不支持"
             }
             let group_id_t = window.localStorage.getItem('debug_group_id');
             if (group_id_t) {
                 this.group_id = group_id_t
             }else {
-                this.group_id = "556515826"
+                this.group_id = "439913126"
             }
             let user_id_t = window.localStorage.getItem('debug_user_id');
             if (user_id_t) {
                 this.user_id = user_id_t
             }else {
-                this.user_id = ""
+                this.user_id = "2114460639"
             }
             let pkg_name_t = window.localStorage.getItem('debug_pkg_name');
             if (pkg_name_t) {
@@ -130,6 +318,59 @@
                 this.pkg_name = ""
             }
 
+            setInterval(() => {
+                quill = this.$refs.child.getQuill();
+                let sec = quill.getSelection()
+                let curr_index = 0
+                if(sec){
+                    curr_index = sec.index
+                }
+                
+                let code = quill.getText();
+                tm = (new Date()).valueOf()
+                if ((code!= this.last_code || curr_index != this.last_index) && !this.composing && tm - this.last_change_time > 300) {
+                    this.highlight()
+                    this.last_code = code
+                    this.last_index = curr_index
+                }
+            }, 500)
+
+
+            // 对复制进行hook，解决复制时多余的换行
+            ele = document.getElementById("script_content")
+            ele.oncopy = (e) => {
+                quill = this.$refs.child.getQuill()
+                range = quill.getSelection()
+                e.clipboardData.setData('text/plain', quill.getText(range.index, range.length));
+                e.preventDefault();
+            }
+            
+             // 处理中文输入
+            ele.addEventListener('compositionstart',(e) =>{
+                this.composing = true
+                console.log('compositionstart')
+            })
+            ele.addEventListener('compositionend',(e) =>{    
+                this.composing = false
+                console.log('compositionend')
+                this.last_change_time = (new Date()).valueOf()
+            })
+
+            quill = this.$refs.child.getQuill()
+            quill.on('text-change', (delta, oldDelta, source) => {
+                if (source == 'user') {
+                    if(!this.composing){
+                        this.last_change_time = (new Date()).valueOf()
+                    }
+                }
+            });
+            quill.on('selection-change', (range, oldDelta, source) => {
+                if (source == 'user') {
+                    if(!this.composing){
+                        this.last_change_time = (new Date()).valueOf()
+                    }
+                }
+            });
         },
         methods: {
             change_platform(){
@@ -150,11 +391,15 @@
             change_pkg_name(){
                 window.localStorage.setItem('debug_pkg_name',this.pkg_name)
             },
-            save_script(content){
-                window.localStorage.setItem('debug_script_content',content)
-            },
             run_script(){
-                let content = this.$refs.child.getText();
+                // 让大输入框丢失光标
+                const quill = this.$refs.child.getQuill();
+                if (quill) {
+                    quill.blur();
+                }
+                // 防止输入法弹出
+                document.activeElement.blur();
+                let content = this.$refs.child.getQuill().getText();
                 let script = {
                     "platform":this.platform,
                     "bot_id":this.bot_id,
@@ -173,12 +418,19 @@
                         this.result = "提交失败：" + res.data
                     }
                 })
-                .catch( (error) => { // 'this' context issue fixed
+                .catch( (error) => {
                     this.result = "提交失败: " + error
                 });
             },
             run_script2(){
-                let content = this.$refs.child.getText();
+                // 让大输入框丢失光标
+                const quill = this.$refs.child.getQuill();
+                if (quill) {
+                    quill.blur();
+                }
+                // 防止输入法弹出
+                document.activeElement.blur();
+                let content = this.$refs.child.getQuill().getText();
                 let script = {
                     "platform":this.platform,
                     "bot_id":this.bot_id,
@@ -196,7 +448,7 @@
                         this.result = res.data["data"]
                         var reg = /\[CQ:image,file=(.*?)(\]|\,)/;
                         let ret = reg.exec(this.result)
-                        if(ret && ret.length > 1) { // Added check for ret
+                        if(ret && ret.length > 1) {
                             let img = ret[1].trim()
                             if(img.startsWith("base64://")) {
                                 this.img_src = "data:image/jpeg;base64," + img.slice(9)
@@ -215,40 +467,236 @@
                         this.result = "执行失败：" + res.data['data']
                     }
                 })
-                .catch((error) => { // 'this' context issue fixed
+                .catch((error) => {
                     this.result = "执行失败: " + error
                 });
             },
-        },
-    })
-            // 动态注册 CustomEditor 组件
-        const options = {
-            moduleCache: {
-                vue: Vue
-            },
-            getFile(url) {
-                return fetch(url).then(res => res.ok ? res.text() : Promise.reject(res));
-            },
-            addStyle(textContent) {
-                const style = document.createElement('style');
-                style.textContent = textContent;
-                document.head.appendChild(style);
-            },
-        };
-        window['vue3-sfc-loader'].loadModule('./custom_editor.vue', options).then(CustomEditor => {
-            app.component('CustomEditor', CustomEditor.default || CustomEditor);
-            const vm = app.mount('#app');
-            
-            // 恢复保存的脚本内容
-            vm.$nextTick(() => {
-                const savedScript = window.localStorage.getItem('debug_script_content');
-                if (savedScript && vm.$refs.child) {
-                    vm.$refs.child.setText(savedScript);
+            showFullscreenImage() {
+                this.showFullscreen = true;
+                // 让大输入框丢失光标
+                const quill = this.$refs.child.getQuill();
+                if (quill) {
+                    quill.blur();
                 }
-            });
-        });
+                // 防止输入法弹出
+                document.activeElement.blur();
+            },
+            closeFullscreenImage() {
+                this.showFullscreen = false;
+                // 防止输入法弹出
+                document.activeElement.blur();
+            },
+            highlight()
+            {
+                var current_color = 0;
+                function next_color(){
+                    current_color = (current_color + 1) % 4;
+                }
+                function pre_color(){
+                    current_color = (current_color + 3) % 4;
+                }
+                var colorList = ["#000000","#FF0000","#0000FF","#008000"]
+                function ColorReverse(OldColorValue){
+                    var OldColorValue = "0x"+OldColorValue.replace(/#/g,"");
+                    var str="000000"+(0xFFFFFF-OldColorValue).toString(16);
+                    return '#' + str.substring(str.length-6,str.length);
+                }
+                function out_text(quill,index){
+                    colorList[current_color](quill,index)
+                }
+
+                quill = this.$refs.child.getQuill();
+                
+                select = quill.getSelection()
+                let curr_index = 0
+                if(select){
+                    curr_index = select.index
+                }
+
+                let code = quill.getText();
+                content = []
+                for(let i = 0;i<code.length;i++){
+                    if(code[i] == "【"){
+                        next_color()
+                        content.push({
+                            "insert":code[i],attributes:{color:colorList[current_color]}
+                        })
+                    }
+                    else if(code[i] == "】"){
+                        content.push({
+                            "insert":code[i],attributes:{color:colorList[current_color]}
+                        })
+                        pre_color()
+                    }
+                    else if(code[i] == "\\"){
+                        content.push({
+                            "insert":code[i],attributes:{color:colorList[current_color]}
+                        })
+                        i += 1
+                        content.push({
+                            "insert":code[i],attributes:{color:colorList[current_color]}
+                        })
+                    }
+                    else{
+                        if(code[i] == '\xa0'){
+                            content.push({
+                                "insert":" ",attributes:{color:colorList[current_color]}
+                            })
+                        }else {
+                            content.push({
+                                "insert":code[i],attributes:{color:colorList[current_color]}
+                            })
+                        }
+                    }
+                }
+                // 在这里处理光标
+                if(curr_index >= 0 && curr_index < content.length){
+                    let t = 0;
+                    if(content[curr_index].insert == "【"){
+                        t = 1;
+                        content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
+                        while(curr_index < content.length){
+                            curr_index += 1
+                            if(curr_index >= content.length)break
+                            if(content[curr_index].insert == "\\"){
+                                curr_index += 1
+                            }else if(content[curr_index].insert == "【"){
+                                t += 1
+                            }else if(content[curr_index].insert == "】"){
+                                t -= 1
+                            }
+                            if(t == 0){
+                                content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
+                                break
+                            }
+                        }
+                    }else if(content[curr_index].insert == "】") {
+                        t = 1;
+                        content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
+                        while(curr_index >= 0){
+                            curr_index -= 1
+                            if(curr_index < 0)break
+                            if(curr_index - 1 > 0 && content[curr_index - 1].insert == "\\") {
+                                curr_index -= 1
+                            }else if(content[curr_index].insert == "【"){
+                                t -= 1
+                            }else if(content[curr_index].insert == "】"){
+                                t += 1
+                            }
+                            if(t == 0){
+                                content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
+                                break
+                            }
+                        }
+                    }else if(curr_index - 1 >=0){
+                        curr_index -= 1;
+                        if(content[curr_index].insert == "【"){
+                            t = 1;
+                            content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
+                            while(curr_index < content.length){
+                                curr_index += 1
+                                if(curr_index >= content.length)break
+                                if(content[curr_index].insert == "\\"){
+                                    curr_index += 1
+                                }else if(content[curr_index].insert == "【"){
+                                    t += 1
+                                }else if(content[curr_index].insert == "】"){
+                                    t -= 1
+                                }
+                                if(t == 0){
+                                    content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
+                                    break
+                                }
+                            }
+                        }else if(content[curr_index].insert == "】") {
+                            t = 1;
+                            content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
+                            while(curr_index >= 0){
+                                curr_index -= 1
+                                if(curr_index < 0)break
+                                if(curr_index - 1 > 0 && content[curr_index - 1].insert == "\\") {
+                                    curr_index -= 1
+                                }else if(content[curr_index].insert == "【"){
+                                    t -= 1
+                                }else if(content[curr_index].insert == "】"){
+                                    t += 1
+                                }
+                                if(t == 0){
+                                    content[curr_index].attributes.background = ColorReverse(content[curr_index].attributes.color)
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                quill.setContents(content)
+                quill.setSelection(select)
+            },
+        }
+    })
+    const globalOptions = {
+        modules: {
+        toolbar: ""
+        },
+        placeholder: '脚本内容',
+        theme: 'snow',
+        scrollingContainer: true
+    }
+
+    // 添加自定义样式以实现自动换行
+    const style = document.createElement('style');
+    style.textContent = `
+        /* 全局容器样式 */
+        #app {
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+        }
+        
+        /* Quill编辑器容器 */
+        .ql-container {
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            width: 100% !important;
+        }
+        
+        /* Quill编辑器工具栏 */
+        .ql-toolbar {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            flex-wrap: wrap !important;
+        }
+        
+        /* Quill编辑器内容 */
+        .ql-editor {
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            overflow-x: hidden !important;
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+        
+        /* Quill编辑器内容子元素 */
+        .ql-editor * {
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+        
+        /* 确保所有文本元素都自动换行 */
+        p, span, div {
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            max-width: 100% !important;
+        }
+    `;
+    document.head.appendChild(style);
+
+    VueQuill.QuillEditor.props.globalOptions.default = () => globalOptions
+    app.component('QuillEditor', VueQuill.QuillEditor);
+    app.mount('#app')
    </script>
-   <script src="theme.js"></script>
    
 </body>
 
