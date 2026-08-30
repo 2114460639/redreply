@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
     - name: Install cross
       run: cargo install cross --git https://github.com/cross-rs/cross
     - name: Build
@@ -24,7 +24,7 @@ jobs:
         mkdir Release
         cp target/x86_64-unknown-linux-musl/release/redlang Release/redlang_linux_x86_64
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: redlang_linux_x86_64
         path: Release/redlang_linux_x86_64
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
     - name: Install cross
       run: cargo install cross --git https://github.com/cross-rs/cross
     - name: Build
@@ -44,7 +44,7 @@ jobs:
         mkdir Release
         cp target/i686-unknown-linux-musl/release/redlang Release/redlang_linux_i686
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: redlang_linux_i686
         path: Release/redlang_linux_i686
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
     - name: Install cross
       run: cargo install cross --git https://github.com/cross-rs/cross
     - name: Build
@@ -64,7 +64,7 @@ jobs:
         mkdir Release
         cp target/aarch64-unknown-linux-musl/release/redlang Release/redlang_linux_aarch64
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: redlang_linux_aarch64
         path: Release/redlang_linux_aarch64
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
     - name: Install cross
       run: cargo install cross --git https://github.com/cross-rs/cross
     - name: Build
@@ -84,7 +84,7 @@ jobs:
         mkdir Release
         cp target/aarch64-linux-android/release/redlang Release/redlang_android_aarch64
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: redlang_android_aarch64
         path: Release/redlang_android_aarch64
@@ -94,7 +94,7 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
     - name: Add target
       run: rustup target add x86_64-pc-windows-msvc
       shell: pwsh
@@ -107,7 +107,7 @@ jobs:
         cp target/x86_64-pc-windows-msvc/release/redlang.exe Release/redlang_windows_x86_64.exe
       shell: pwsh
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: redlang_windows_x86_64.exe
         path: Release/redlang_windows_x86_64.exe
@@ -117,7 +117,7 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
     - name: Add target
       run: rustup target add i686-pc-windows-msvc
       shell: pwsh
@@ -130,7 +130,7 @@ jobs:
         cp target/i686-pc-windows-msvc/release/redlang.exe Release/redlang_windows_i686.exe
       shell: pwsh
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: redlang_windows_i686.exe
         path: Release/redlang_windows_i686.exe
